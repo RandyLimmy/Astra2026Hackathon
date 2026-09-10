@@ -1,0 +1,310 @@
+{
+  "aggregate": {
+    "candidate_mae_m": 2.931240055888992,
+    "cold_control_pass": true,
+    "collision_outcomes_match": true,
+    "eligible_cases": 3,
+    "failed_stop_predictions": 0,
+    "improvement_fraction": 0.7151843229852808,
+    "improvement_pass": true,
+    "original_failed_stop_predictions": 0,
+    "original_mae_m": 10.291708962837417,
+    "per_case_pass": false,
+    "predictive_success": false,
+    "previously_observed_cases": 0,
+    "scored_cases": 3,
+    "scoring_complete": true
+  },
+  "all_predictions_saved_at": "2026-09-10T17:11:20.119980+00:00",
+  "kind": "frozen_synthetic_evaluation",
+  "original_source_sha256": "7451a16e73d0652bff21620fdbea938b304bc64ce139577da4af67cc3467b03c",
+  "predeclared_criteria": {
+    "cold_control_absolute_floor_m": 1.0,
+    "cold_control_relative_tolerance": 0.05,
+    "maximum_candidate_to_original_mae_ratio": 0.5,
+    "minimum_original_mae_for_ratio_m": 1e-06,
+    "per_case_absolute_floor_m": 1.0,
+    "per_case_relative_tolerance": 0.1,
+    "require_all_reserved_cases_unseen": true,
+    "require_matching_collision_outcomes": true,
+    "require_uncensored_stops": true
+  },
+  "source_frozen_at": "2026-09-10T17:10:00.387441+00:00",
+  "source_sha256": "bd6ad5d9d5eef3920c05dee2e7d8631fbf3463fa807908fb706c3b205fcf4761",
+  "state_extension": {
+    "added_state_keys": [
+      "heat_j"
+    ],
+    "advance_state_changed": true,
+    "candidate_has_nonempty_state": true,
+    "candidate_state_keys": [
+      "heat_j"
+    ],
+    "force_rule_changed": true,
+    "init_state_changed": true,
+    "interpretation": "Source/runtime indicators only; they do not establish authorship, novelty, or physical identity.",
+    "original_state_keys": [],
+    "reset_rule_changed": false,
+    "source_changed": true
+  },
+  "cases": [
+    {
+      "candidate_error_m": 0.0,
+      "case_id": "reserved_1",
+      "cold_control_pass": true,
+      "cold_control_tolerance_m": 1.8437648892105818,
+      "collision_correct": true,
+      "config": {
+        "brake_strength": 1.0,
+        "preparation_cycles": 0,
+        "speed_mps": 22.0,
+        "wait_s": 0.0,
+        "wall_distance_m": null
+      },
+      "distance_tolerance_m": 3.6875297784211636,
+      "original_error_m": 0.0,
+      "prediction_locked_at": "2026-09-10T17:10:02.626659+00:00",
+      "previously_observed": false,
+      "reference_revealed_at": "2026-09-10T17:11:22.500286+00:00",
+      "within_tolerance": true,
+      "original": {
+        "brake_start_time": 0.0,
+        "brake_start_x": 2.001373580493749,
+        "censored": false,
+        "collision": false,
+        "collision_time": null,
+        "final_front_x": 38.87667136470538,
+        "final_speed": 0.021541894573356913,
+        "impact_speed": null,
+        "lane_departure": false,
+        "max_lateral_displacement": 0.0013056265423768041,
+        "max_yaw_degrees": 0.0030550315768016548,
+        "stopped": true,
+        "stopping_distance": 36.87529778421163,
+        "trial_duration": 4.483999999999728,
+        "wall_clearance": null
+      },
+      "candidate": {
+        "brake_start_time": 0.0,
+        "brake_start_x": 2.001373580493749,
+        "censored": false,
+        "collision": false,
+        "collision_time": null,
+        "final_front_x": 38.87667136470538,
+        "final_speed": 0.021541894573356913,
+        "impact_speed": null,
+        "lane_departure": false,
+        "max_lateral_displacement": 0.0013056265423768041,
+        "max_yaw_degrees": 0.0030550315768016548,
+        "stopped": true,
+        "stopping_distance": 36.87529778421163,
+        "trial_duration": 4.483999999999728,
+        "wall_clearance": null
+      },
+      "reference": {
+        "brake_start_time": 0.0,
+        "brake_start_x": 2.001373580493749,
+        "censored": false,
+        "collision": false,
+        "collision_time": null,
+        "final_front_x": 38.87667136470538,
+        "final_speed": 0.021541894573356913,
+        "impact_speed": null,
+        "lane_departure": false,
+        "max_lateral_displacement": 0.0013056265423768041,
+        "max_yaw_degrees": 0.0030550315768016548,
+        "stopped": true,
+        "stopping_distance": 36.87529778421163,
+        "trial_duration": 4.483999999999728,
+        "wall_clearance": null
+      }
+    },
+    {
+      "candidate_error_m": 6.92429957050129,
+      "case_id": "reserved_2",
+      "collision_correct": true,
+      "config": {
+        "brake_strength": 1.0,
+        "preparation_cycles": 2,
+        "speed_mps": 22.0,
+        "wait_s": 0.0,
+        "wall_distance_m": null
+      },
+      "distance_tolerance_m": 6.240254927828037,
+      "original_error_m": 25.52725149406873,
+      "prediction_locked_at": "2026-09-10T17:10:18.280634+00:00",
+      "previously_observed": false,
+      "reference_revealed_at": "2026-09-10T17:11:26.181537+00:00",
+      "within_tolerance": false,
+      "original": {
+        "brake_start_time": 0.0,
+        "brake_start_x": 2.001373580493749,
+        "censored": false,
+        "collision": false,
+        "collision_time": null,
+        "final_front_x": 38.87667136470538,
+        "final_speed": 0.021541894573356913,
+        "impact_speed": null,
+        "lane_departure": false,
+        "max_lateral_displacement": 0.0013056265423768041,
+        "max_yaw_degrees": 0.0030550315768016548,
+        "stopped": true,
+        "stopping_distance": 36.87529778421163,
+        "trial_duration": 4.483999999999728,
+        "wall_clearance": null
+      },
+      "candidate": {
+        "brake_start_time": 0.0,
+        "brake_start_x": 2.001373580493749,
+        "censored": false,
+        "collision": false,
+        "collision_time": null,
+        "final_front_x": 57.47962328827282,
+        "final_speed": 0.020851741440406486,
+        "impact_speed": null,
+        "lane_departure": false,
+        "max_lateral_displacement": 0.00040094215865373495,
+        "max_yaw_degrees": 0.00040522276412596677,
+        "stopped": true,
+        "stopping_distance": 55.47824970777907,
+        "trial_duration": 6.307999999999527,
+        "wall_clearance": null
+      },
+      "reference": {
+        "brake_start_time": 0.0,
+        "brake_start_x": 2.001373580493749,
+        "censored": false,
+        "collision": false,
+        "collision_time": null,
+        "final_front_x": 64.40392285877411,
+        "final_speed": 0.02095537754804508,
+        "impact_speed": null,
+        "lane_departure": false,
+        "max_lateral_displacement": 0.0002752705961135118,
+        "max_yaw_degrees": 0.0005623918645623571,
+        "stopped": true,
+        "stopping_distance": 62.40254927828036,
+        "trial_duration": 6.931999999999459,
+        "wall_clearance": null
+      }
+    },
+    {
+      "candidate_error_m": 1.8694205971656856,
+      "case_id": "reserved_3",
+      "collision_correct": true,
+      "config": {
+        "brake_strength": 1.0,
+        "preparation_cycles": 2,
+        "speed_mps": 22.0,
+        "wait_s": 45.0,
+        "wall_distance_m": null
+      },
+      "distance_tolerance_m": 4.222317317865516,
+      "original_error_m": 5.34787539444352,
+      "prediction_locked_at": "2026-09-10T17:11:20.116788+00:00",
+      "previously_observed": false,
+      "reference_revealed_at": "2026-09-10T17:11:28.800661+00:00",
+      "within_tolerance": true,
+      "original": {
+        "brake_start_time": 0.0,
+        "brake_start_x": 2.001373580493749,
+        "censored": false,
+        "collision": false,
+        "collision_time": null,
+        "final_front_x": 38.87667136470538,
+        "final_speed": 0.021541894573356913,
+        "impact_speed": null,
+        "lane_departure": false,
+        "max_lateral_displacement": 0.0013056265423768041,
+        "max_yaw_degrees": 0.0030550315768016548,
+        "stopped": true,
+        "stopping_distance": 36.87529778421163,
+        "trial_duration": 4.483999999999728,
+        "wall_clearance": null
+      },
+      "candidate": {
+        "brake_start_time": 0.0,
+        "brake_start_x": 2.001373580493749,
+        "censored": false,
+        "collision": false,
+        "collision_time": null,
+        "final_front_x": 42.355126161983215,
+        "final_speed": 0.020716679618680955,
+        "impact_speed": null,
+        "lane_departure": false,
+        "max_lateral_displacement": 0.0011881312375308839,
+        "max_yaw_degrees": 0.0021181861404645334,
+        "stopped": true,
+        "stopping_distance": 40.353752581489466,
+        "trial_duration": 4.879999999999685,
+        "wall_clearance": null
+      },
+      "reference": {
+        "brake_start_time": 0.0,
+        "brake_start_x": 2.001373580493749,
+        "censored": false,
+        "collision": false,
+        "collision_time": null,
+        "final_front_x": 44.2245467591489,
+        "final_speed": 0.019954008211744596,
+        "impact_speed": null,
+        "lane_departure": false,
+        "max_lateral_displacement": 0.0011023084326464041,
+        "max_yaw_degrees": 0.0017676612276972654,
+        "stopped": true,
+        "stopping_distance": 42.22317317865515,
+        "trial_duration": 5.087999999999662,
+        "wall_clearance": null
+      }
+    }
+  ],
+  "session": {
+    "model": "gpt-6-astra",
+    "reasoning_effort": "medium",
+    "status": "completed",
+    "start_at": "2026-09-10T17:03:00.630429+00:00",
+    "end_at": "2026-09-10T17:11:28.940355+00:00",
+    "api_requests": 12,
+    "agent_submitted": false,
+    "freeze_reason": "request_or_time_budget",
+    "max_api_requests": 12,
+    "max_seconds": 1800,
+    "usage": {
+      "input_tokens": 750349,
+      "output_tokens": 3290,
+      "total_tokens": 753639,
+      "reasoning_tokens": 1338,
+      "cached_input_tokens": 665845
+    },
+    "system_prompt_sha256": "d35f7ca37ea788b559304db37e86e4f53eeb952275a37f7751e6bbd830c7518b",
+    "task_prompt_sha256": "2eaa7688530b9feb8ff3735f9916212f40c0272290b6aede67a3f34e13f189f6",
+    "source_hash": "bd6ad5d9d5eef3920c05dee2e7d8631fbf3463fa807908fb706c3b205fcf4761",
+    "frozen_source_file": "broker/submission/actuator.py",
+    "duration_s": 508.30748474999564,
+    "budgets": {
+      "tool_calls": {
+        "used": 12,
+        "limit": 30
+      },
+      "run_experiment": {
+        "used": 3,
+        "limit": 6
+      },
+      "patch_model": {
+        "used": 2,
+        "limit": 3
+      },
+      "run_model": {
+        "used": 2,
+        "limit": 12
+      },
+      "run_regression_suite": {
+        "used": 1,
+        "limit": 3
+      },
+      "elapsed_s": 508.31,
+      "time_limit_s": 1800,
+      "frozen": true
+    }
+  }
+}

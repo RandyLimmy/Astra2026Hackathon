@@ -13,6 +13,8 @@ dependencies = [
   "scipy==1.18.1",
   "matplotlib==3.11.1",
   "pillow==12.3.0",
+  "openai==3.11.0",
+  "python-dotenv==1.2.3",
 ]
 
 [project.optional-dependencies]
@@ -21,14 +23,16 @@ dev = ["pytest==9.1.1"]
 [project.scripts]
 realitypatch = "sim.cli:main"
 realitypatch-car = "simulator.__main__:main"
+realitypatch-astra = "investigation.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["sim*", "contracts*", "component_worker*", "reference_host*", "demo*", "evaluation*", "candidate*"]
+include = ["sim*", "contracts*", "component_worker*", "reference_host*", "demo*", "evaluation*", "candidate*", "investigation*"]
 
 [tool.setuptools.package-data]
 sim = ["*.xml"]
 simulator = ["assets/*.xml", "public/*.xml", "public/*.json", "public/*.md", "private/*.json", "private/scenarios/*.json", "*.md"]
 contracts = ["*.md"]
+investigation = ["prompts/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,34 @@
+"""Editable four-wheel component, protocol wheel_v2.
+
+Wheel order: front-left, front-right, rear-left, rear-right.
+Angular speeds are rad/s, braking torque capacities and applied torques are Nm.
+"""
+
+import math
+
+
+def init_state():
+    return {"heat_j": [0.0, 0.0, 0.0, 0.0]}
+
+
+def compute_brake_torque_limits(state, brake_command, wheel_speed_rad_s):
+    limits = []
+    for capacity, heat in zip((835.0, 835.0, 557.0, 557.0), state["heat_j"]):
+        fraction = min(1.0, max(0.0, (heat - 110000.0) / 180000.0))
+        fade = fraction * fraction * (3.0 - 2.0 * fraction)
+        limits.append(capacity * brake_command * (1.0 - 0.55 * fade))
+    return limits
+
+
+def advance_state(state, brake_command, mean_wheel_speed_rad_s, applied_brake_torque_nm, dt_s):
+    decay = math.exp(-dt_s / 90.0)
+    gain = -90.0 * math.expm1(-dt_s / 90.0)
+    heat = []
+    for old, omega, torque in zip(state["heat_j"], mean_wheel_speed_rad_s, applied_brake_torque_nm):
+        power = max(0.0, -omega * torque)
+        heat.append(min(1e12, old * decay + power * gain))
+    return {"heat_j": heat}
+
+
+def on_trial_reset(state):
+    return state
