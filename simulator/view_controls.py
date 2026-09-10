@@ -73,6 +73,8 @@ def settings_lines(scenario: str, config) -> list[str]:
     result = []
     if "fault" in values and fault in ("healthy", "none"):
         result.append("Healthy reference")
+    elif platform == "warehouse" and fault == "cargo_breakaway":
+        result.append("Force-triggered restraint release")
     elif "fault_at" in values:
         label = "Impact arming" if scenario.startswith("car_") else "Change scheduled"
         result.append(f"{label}: {values['fault_at']:g} s")

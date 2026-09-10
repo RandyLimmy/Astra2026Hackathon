@@ -1,5 +1,11 @@
 # RealityPatch
 
+The [cargo-turn demo](simulator/CARGO_DEMO.md) follows a marked 90-degree bend
+with a load that can physically fall from the trolley. [Watch the animation](docs/cargo-curve-demo/animation.mp4)
+or double-click `launch_cargo_demo.command`. A separate GPT-6 investigation
+can repair the load model and evaluate unseen turns; no live model repair is
+claimed by the prepared animation.
+
 The teammate's car simulator in `simulator/` is the preferred car implementation.
 Use it for car scenarios, demos and investigations. The main `realitypatch`
 command opens this simulator; `realitypatch-car` is an alias. Our original

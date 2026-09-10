@@ -24,7 +24,8 @@ def advance(sim: Simulation, seconds: float | None = None) -> Simulation:
 class ConfigTests(unittest.TestCase):
     def test_invalid_values_are_rejected_before_compilation(self):
         numeric = ("duration", "timestep", "fault_at", "payload_mass", "added_mass", "shift_distance",
-                   "traction_scale", "resistance", "motor_scale", "fault_ramp")
+                   "traction_scale", "resistance", "motor_scale", "fault_ramp", "drive_scale",
+                   "latch_strength", "latch_dwell", "latch_arm_at")
         for name in numeric:
             for value in (float("nan"), float("inf"), -float("inf"), True, "1"):
                 with self.subTest(name=name, value=value), self.assertRaises(ValueError):
@@ -32,7 +33,9 @@ class ConfigTests(unittest.TestCase):
         bad = {"duration": (0, 61), "timestep": (0, .006), "fault_at": (-1, 121),
                "payload_mass": (0, 31), "added_mass": (-1, 41), "shift_distance": (-1, .31),
                "traction_scale": (0, 1.1), "resistance": (-1, 6), "motor_scale": (-1, 1.1),
-               "fault_ramp": (-1, 11), "fault": ("wind",), "probe": ("unknown",)}
+               "fault_ramp": (-1, 11), "drive_scale": (-1, 1.6), "latch_strength": (0, 10001),
+               "latch_dwell": (-1, 11), "latch_arm_at": (-1, 121),
+               "fault": ("wind",), "probe": ("unknown",)}
         for name, values in bad.items():
             for value in values:
                 with self.subTest(name=name, value=value), self.assertRaises(ValueError):
@@ -104,8 +107,8 @@ class PhysicsTests(unittest.TestCase):
     def test_all_timed_faults_match_before_onset(self):
         nominal = advance(Simulation(Config(duration=2)), 1.5)
         for fault in FAULTS:
-            if fault == "payload_mass":
-                continue  # New cargo is declared at loading, before trial time zero.
+            if fault in ("payload_mass", "cargo_breakaway"):
+                continue  # Loading and force-triggered failure have separate onset contracts.
             with self.subTest(fault=fault):
                 actual = advance(Simulation(Config(fault=fault, duration=2)), 1.5)
                 np.testing.assert_array_equal(actual.data.qpos, nominal.data.qpos)
