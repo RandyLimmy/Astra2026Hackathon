@@ -147,7 +147,9 @@ def init_state():
 
     def test_nonterminating_wheel_query_is_killed(self):
         source = BASELINE + "\ndef compute_brake_torque_limits(state, brake_command, wheel_speed_rad_s):\n    while True: pass\n"
-        with self.worker(source, timeout_s=0.3) as worker:
+        with self.worker(source) as worker:
+            # The short deadline targets the query, after normal initialization.
+            worker.timeout_s = 0.3
             with self.assertRaises(WorkerTimeout):
                 worker.torque_limits(1, [10.0] * 4)
 

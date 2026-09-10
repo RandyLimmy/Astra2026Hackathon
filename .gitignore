@@ -18,3 +18,7 @@ MUJOCO_LOG.TXT
 build/
 dist/
 artifacts/
+
+# Frontend dependencies and local build output.
+frontend/node_modules/
+frontend/dist/

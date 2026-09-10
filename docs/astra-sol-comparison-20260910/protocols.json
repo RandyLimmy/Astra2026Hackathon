@@ -1,0 +1,98 @@
+{
+  "run_a": {
+    "fingerprint": "b7d205a5aff97bf7cf0d7832d43aff52939a667ead3537671109db9a113335d6",
+    "manifest": {
+      "schema_version": 1,
+      "source_sha256": {
+        "investigation/prompts/system.md": "d35f7ca37ea788b559304db37e86e4f53eeb952275a37f7751e6bbd830c7518b",
+        "investigation/prompts/task.md": "f35987b73e58db767bcbb4552ea7e036ebfc49f4d8979f714d07b8a51c39af9f",
+        "contracts/WHEEL_ACTUATOR.md": "d98b4cda88a763e93fc1f040d63570a8d808125c6184348bb2f36e3572fbf161",
+        "candidate/wheel_actuator.py": "7451a16e73d0652bff21620fdbea938b304bc64ce139577da4af67cc3467b03c",
+        "investigation/api.py": "31c3a9a10566c0e227b24e088fa8673b2ec41b215e4bd32e491badc3305dae37",
+        "investigation/broker.py": "d177e253e10b0e39b8cc6c4b226d74ca2443152a738a759de2b827ec8f2acf97",
+        "investigation/patching.py": "2b8febabc91dd5707b3236d328c42671e371795768fe0c5810dddc85aaa25dde",
+        "investigation/runner.py": "ebe440a5df19b993ddad58e081b69e635a7fad6c1b82b1ee0858f7e6770e1ea6",
+        "investigation/physics.py": "860b49ee813f80bf5b880c39a1357c47a5f1535e80b751cf7003ecf4316e8bf0",
+        "investigation/evaluation.py": "40438ea1deb7e7c6942b5df2aecbcab1a95e88a775341a44932c8544fc6f7516",
+        "component_worker/client.py": "bd163004345d8b6232ac1fa62f19032dc8f5d55251084d03b59a850fbc6f624c",
+        "component_worker/runtime.py": "b6bda5edf822d272315eeb5b2a72e35e00c87597ce0fdbfe275187876590882e",
+        "simulator/config.py": "747f866b8edc7140de24ec0f54c34835f5fdb72e30b2b3b24174514834cf20d7",
+        "simulator/model.py": "bf7de4667903af49ba288acefcfc9b5be23ad690021d18c2c4a80b7cfac54dcc",
+        "simulator/runner.py": "47c5c442da980ab5df5de59bc14aeb4febff34d4cba40a0a30cdc013c0a3ba75",
+        "simulator/private/thermal.py": "04b29acea8023ad93fe2da85315443f0ffa3010b6300f0db2a62e68922af0f35",
+        "simulator/assets/car.xml": "672f025c3bb56128060cd2ce6179e89545e9a7912d79b9237c070982321221ab",
+        "simulator/assets/scene.xml": "6ea63acb6d255b82167321330ddc9b68bdebd87e7c0db49a47d230321478f794",
+        "simulator/assets/track.xml": "84329963bd15f5dad60c24da29e63d89d3fbd3a57a3aca9454b5b24a08f8dfe6",
+        "simulator/assets/track_no_wall.xml": "80e17940e51eb11accf27ad4dde1739209d6d02f88014ff967057cb2bde3c2ae"
+      },
+      "tool_schema_sha256": "d3789c858a42778320b87278e03099ff6fa1892136e27347a4f3511d49863f2a",
+      "caps": {
+        "max_api_requests": 12,
+        "max_seconds": 1800,
+        "max_tool_calls": 30,
+        "tool_attempts": {
+          "run_experiment": 6,
+          "patch_model": 3,
+          "run_model": 12,
+          "run_regression_suite": 3
+        },
+        "max_output_tokens": 8192,
+        "debrief_max_output_tokens": 2048
+      },
+      "runtime_versions": {
+        "python": "3.13.7",
+        "mujoco": "3.13.0",
+        "numpy": "2.5.3",
+        "openai": "3.11.0"
+      }
+    }
+  },
+  "run_b": {
+    "fingerprint": "b7d205a5aff97bf7cf0d7832d43aff52939a667ead3537671109db9a113335d6",
+    "manifest": {
+      "schema_version": 1,
+      "source_sha256": {
+        "investigation/prompts/system.md": "d35f7ca37ea788b559304db37e86e4f53eeb952275a37f7751e6bbd830c7518b",
+        "investigation/prompts/task.md": "f35987b73e58db767bcbb4552ea7e036ebfc49f4d8979f714d07b8a51c39af9f",
+        "contracts/WHEEL_ACTUATOR.md": "d98b4cda88a763e93fc1f040d63570a8d808125c6184348bb2f36e3572fbf161",
+        "candidate/wheel_actuator.py": "7451a16e73d0652bff21620fdbea938b304bc64ce139577da4af67cc3467b03c",
+        "investigation/api.py": "31c3a9a10566c0e227b24e088fa8673b2ec41b215e4bd32e491badc3305dae37",
+        "investigation/broker.py": "d177e253e10b0e39b8cc6c4b226d74ca2443152a738a759de2b827ec8f2acf97",
+        "investigation/patching.py": "2b8febabc91dd5707b3236d328c42671e371795768fe0c5810dddc85aaa25dde",
+        "investigation/runner.py": "ebe440a5df19b993ddad58e081b69e635a7fad6c1b82b1ee0858f7e6770e1ea6",
+        "investigation/physics.py": "860b49ee813f80bf5b880c39a1357c47a5f1535e80b751cf7003ecf4316e8bf0",
+        "investigation/evaluation.py": "40438ea1deb7e7c6942b5df2aecbcab1a95e88a775341a44932c8544fc6f7516",
+        "component_worker/client.py": "bd163004345d8b6232ac1fa62f19032dc8f5d55251084d03b59a850fbc6f624c",
+        "component_worker/runtime.py": "b6bda5edf822d272315eeb5b2a72e35e00c87597ce0fdbfe275187876590882e",
+        "simulator/config.py": "747f866b8edc7140de24ec0f54c34835f5fdb72e30b2b3b24174514834cf20d7",
+        "simulator/model.py": "bf7de4667903af49ba288acefcfc9b5be23ad690021d18c2c4a80b7cfac54dcc",
+        "simulator/runner.py": "47c5c442da980ab5df5de59bc14aeb4febff34d4cba40a0a30cdc013c0a3ba75",
+        "simulator/private/thermal.py": "04b29acea8023ad93fe2da85315443f0ffa3010b6300f0db2a62e68922af0f35",
+        "simulator/assets/car.xml": "672f025c3bb56128060cd2ce6179e89545e9a7912d79b9237c070982321221ab",
+        "simulator/assets/scene.xml": "6ea63acb6d255b82167321330ddc9b68bdebd87e7c0db49a47d230321478f794",
+        "simulator/assets/track.xml": "84329963bd15f5dad60c24da29e63d89d3fbd3a57a3aca9454b5b24a08f8dfe6",
+        "simulator/assets/track_no_wall.xml": "80e17940e51eb11accf27ad4dde1739209d6d02f88014ff967057cb2bde3c2ae"
+      },
+      "tool_schema_sha256": "d3789c858a42778320b87278e03099ff6fa1892136e27347a4f3511d49863f2a",
+      "caps": {
+        "max_api_requests": 12,
+        "max_seconds": 1800,
+        "max_tool_calls": 30,
+        "tool_attempts": {
+          "run_experiment": 6,
+          "patch_model": 3,
+          "run_model": 12,
+          "run_regression_suite": 3
+        },
+        "max_output_tokens": 8192,
+        "debrief_max_output_tokens": 2048
+      },
+      "runtime_versions": {
+        "python": "3.13.7",
+        "mujoco": "3.13.0",
+        "numpy": "2.5.3",
+        "openai": "3.11.0"
+      }
+    }
+  }
+}

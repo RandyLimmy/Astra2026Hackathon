@@ -144,7 +144,10 @@ def init_state():
 
     def test_nonterminating_force_is_killed(self):
         source = BASELINE + "\ndef compute_force(state, brake_command, velocity):\n    while True: pass\n"
-        with self.worker(source, timeout_s=0.3) as worker:
+        with self.worker(source) as worker:
+            # Test the force-call deadline without imposing it on cold sandbox
+            # startup, which may take longer on a busy render/API host.
+            worker.timeout_s = 0.3
             started = time.monotonic()
             with self.assertRaises(WorkerTimeout):
                 worker.force(1, 20)

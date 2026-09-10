@@ -24,9 +24,10 @@ dev = ["pytest==9.1.1"]
 realitypatch = "sim.cli:main"
 realitypatch-car = "simulator.__main__:main"
 realitypatch-astra = "investigation.__main__:main"
+realitypatch-dashboard = "dashboard.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["sim*", "contracts*", "component_worker*", "reference_host*", "demo*", "evaluation*", "candidate*", "investigation*"]
+include = ["sim*", "contracts*", "component_worker*", "reference_host*", "demo*", "evaluation*", "candidate*", "investigation*", "dashboard*"]
 
 [tool.setuptools.package-data]
 sim = ["*.xml"]

@@ -215,7 +215,7 @@ def build_report(run_dir: Path) -> Path:
     model = metadata.get("model", "not recorded")
     effort = metadata.get("reasoning_effort", "not recorded")
     errors = [event for event in events if event.get("type") == "error"]
-    lines = ["# Astra investigation report", "", f"**Status:** {_cell(status)}. "
+    lines = ["# Investigator report", "", f"**Status:** {_cell(status)}. "
              f"**Model:** `{_cell(model)}`. **Configured reasoning effort:** `{_cell(effort)}`.", ""]
     if "predictive_success" in aggregate:
         verdict = aggregate["predictive_success"]
@@ -318,7 +318,7 @@ def build_report(run_dir: Path) -> Path:
             lines.append("- Cases marked previously observed cannot support an unseen-case claim.")
         lines.extend(["- These results concern the recorded synthetic suite. Source changes alone do not validate a physical mechanism or establish research novelty.", ""])
     lines.extend(_source_section(run_dir, evaluation, metadata))
-    lines.extend(["## Recorded investigation", "", "These are Astra’s stated explanations and brief API-provided summaries. "
+    lines.extend(["## Recorded investigation", "", "These are the investigator’s stated explanations and brief API-provided summaries. "
                   "They record its hypotheses, evidence, and reasons for choosing each action.", ""])
     if (run_dir / "events.jsonl").is_file():
         lines.extend(["[Full structured event log](events.jsonl). Tool payloads below are compact excerpts.", ""])
@@ -353,7 +353,8 @@ def build_report(run_dir: Path) -> Path:
     if links:
         lines.extend([" · ".join(links), ""])
     lines.extend(["| Field | Recorded value |", "| --- | --- |"])
-    for key in ("model", "reasoning_effort", "status", "start_at", "end_at", "api_requests", "freeze_reason", "source_hash"):
+    for key in ("profile", "model", "reasoning_effort", "protocol_fingerprint", "status", "start_at", "end_at",
+                "duration_s", "api_requests", "freeze_reason", "source_hash"):
         if key in metadata:
             lines.append(f"| {_cell(key)} | {_cell(metadata[key])} |")
     if isinstance(metadata.get("usage"), dict):

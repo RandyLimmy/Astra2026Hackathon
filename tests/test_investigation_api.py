@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from investigation.api import MODEL, Settings, request_response
-from investigation.runner import run_session, safe_api_error
+from investigation.runner import protocol_identity, run_session, safe_api_error
 
 
 class Item(SimpleNamespace):
@@ -60,8 +60,8 @@ class Broker:
         return {"tool_calls": {"used": len(self.calls), "limit": 30}}
 
 
-def response(output, *, status="completed"):
-    return SimpleNamespace(id="response_test", model=MODEL, reasoning=SimpleNamespace(effort="medium"),
+def response(output, *, status="completed", model=MODEL, reasoning_effort="medium"):
+    return SimpleNamespace(id="response_test", model=model, reasoning=SimpleNamespace(effort=reasoning_effort),
                            status=status, output=output, usage=None)
 
 
@@ -339,3 +339,122 @@ def test_debrief_respects_exhausted_request_budget(tmp_path):
     assert metadata["api_requests"] == 1
     assert "debrief_status" not in metadata
     assert len(client.requests) == 1
+
+
+def test_sol_profile_uses_matching_environment_names_and_one_shared_key(tmp_path, monkeypatch):
+    for name in ("OPENAI_API_KEY", "SOL_MODEL", "SOL_REASONING_EFFORT"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("ASTRA_MODEL", "ignored-other-profile")
+    monkeypatch.setenv("ASTRA_REASONING_EFFORT", "low")
+    path = tmp_path / "profiles.env"
+    path.write_text("OPENAI_API_KEY=synthetic-shared-key\nASTRA_MODEL=also-ignored\n")
+    settings = Settings.load(path, profile="sol-high")
+    assert settings.profile == "sol-high"
+    assert settings.model == "gpt-5.6-sol"
+    assert settings.reasoning_effort == "high"
+    assert settings.api_key == "synthetic-shared-key"
+    assert "synthetic-shared-key" not in repr(settings)
+    assert Settings("synthetic-shared-key", profile="sol-high").model == "gpt-5.6-sol"
+    path.write_text("OPENAI_API_KEY=synthetic-shared-key\nSOL_REASONING_EFFORT=medium\n")
+    with pytest.raises(ValueError, match="high"):
+        Settings.load(path, profile="sol-high")
+    with pytest.raises(ValueError, match="gpt-5.6-sol"):
+        Settings("synthetic-shared-key", model=MODEL, reasoning_effort="high", profile="sol-high")
+
+
+def test_sol_request_pins_high_without_changing_stateless_or_tool_policy():
+    client = Client([None])
+    request_response(client, [{"role": "user", "content": "test"}], [], profile="sol-high", final=True)
+    actual = client.requests[0]
+    assert actual["model"] == "gpt-5.6-sol"
+    assert actual["reasoning"] == {"effort": "high", "summary": "auto"}
+    assert actual["tool_choice"] == "none"
+    assert actual["store"] is False
+    assert actual["include"] == ["reasoning.encrypted_content"]
+    assert actual["parallel_tool_calls"] is False
+    with pytest.raises(ValueError, match="profile"):
+        request_response(client, [], [], profile="unknown")
+    assert len(client.requests) == 1
+
+
+def test_cli_explicit_sol_profile_reaches_settings_and_request(tmp_path, monkeypatch, capsys):
+    from contextlib import nullcontext
+    from investigation.__main__ import main
+    for name in ("SOL_MODEL", "SOL_REASONING_EFFORT"):
+        monkeypatch.delenv(name, raising=False)
+    path = tmp_path / "settings.env"
+    path.write_text("OPENAI_API_KEY=synthetic-shared-key\nASTRA_REASONING_EFFORT=invalid-for-astra\n")
+    reply = response([], model="gpt-5.6-sol", reasoning_effort="high")
+    reply.output_text = "API_READY"
+    client = Client([reply])
+    monkeypatch.setattr(Settings, "client", lambda self: nullcontext(client))
+    assert main(["--profile", "sol-high", "--check-key", "--env-file", str(path)]) == 0
+    assert client.requests[0]["model"] == "gpt-5.6-sol"
+    assert client.requests[0]["reasoning"]["effort"] == "high"
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["profile"] == "sol-high"
+    assert printed["reply"] == "API_READY"
+    assert "synthetic-shared-key" not in json.dumps(printed)
+
+
+def test_sol_session_and_debrief_verify_selected_pair_and_use_generic_labels(tmp_path, capsys):
+    broker = Broker(tmp_path)
+    sol_response = lambda output: response(output, model="gpt-5.6-sol", reasoning_effort="high")
+    client = Client([sol_response([call("submit_prediction", {"rationale": "Ready."})]),
+                     sol_response([Item(type="message", content=[Item(type="output_text", text="Measured results reviewed.")])])])
+    metadata = run_session(client, broker, tmp_path, max_api_requests=2, profile="sol-high",
+                           evaluate=evaluator_saving(evaluated_result(), broker))
+    assert metadata["status"] == "completed"
+    assert metadata["debrief_status"] == "completed"
+    assert metadata["profile"] == "sol-high"
+    assert metadata["model"] == "gpt-5.6-sol"
+    assert metadata["reasoning_effort"] == "high"
+    assert len(metadata["protocol_fingerprint"]) == 64
+    for request in client.requests:
+        assert request["model"] == "gpt-5.6-sol"
+        assert request["reasoning"]["effort"] == "high"
+    assert client.requests[1]["tool_choice"] == "none"
+    printed = capsys.readouterr().out
+    assert "Investigator tool:" in printed
+    assert "Investigator:" in printed
+    assert "Astra" not in printed
+
+
+@pytest.mark.parametrize("returned_model,returned_effort", [(MODEL, "medium"), ("gpt-5.6-sol", "medium")])
+def test_sol_session_rejects_wrong_model_or_reasoning_without_fallback(tmp_path, returned_model, returned_effort):
+    broker = Broker(tmp_path)
+    client = Client([response([call("submit_prediction", {"rationale": "Do not execute."})],
+                              model=returned_model, reasoning_effort=returned_effort)])
+    metadata = run_session(client, broker, tmp_path, max_api_requests=1, profile="sol-high")
+    assert metadata["status"] == "error"
+    assert metadata["freeze_reason"] == "host_error"
+    assert broker.calls == []
+    assert broker.frozen_source is None
+    assert len(client.requests) == 1
+    assert client.requests[0]["model"] == "gpt-5.6-sol"
+    assert client.requests[0]["reasoning"]["effort"] == "high"
+
+
+def test_protocol_fingerprint_matches_across_profiles_and_excludes_run_identity(tmp_path):
+    results = []
+    for profile, model, effort in (("astra-medium", MODEL, "medium"), ("sol-high", "gpt-5.6-sol", "high")):
+        directory = tmp_path / profile
+        broker = Broker(directory)
+        client = Client([response([call("submit_prediction", {"rationale": "Ready."})],
+                                  model=model, reasoning_effort=effort)])
+        results.append(run_session(client, broker, directory, max_api_requests=1, profile=profile))
+    assert results[0]["profile"] != results[1]["profile"]
+    assert results[0]["protocol_fingerprint"] == results[1]["protocol_fingerprint"]
+    assert results[0]["protocol_manifest"] == results[1]["protocol_manifest"]
+    serialized = json.dumps(results[0]["protocol_manifest"])
+    assert "astra-medium" not in serialized
+    assert "sol-high" not in serialized
+    assert str(tmp_path) not in serialized
+    assert "run_id" not in serialized
+    hashes = results[0]["protocol_manifest"]["source_sha256"]
+    assert {"investigation/prompts/system.md", "investigation/prompts/task.md", "contracts/WHEEL_ACTUATOR.md",
+            "investigation/api.py", "investigation/broker.py", "investigation/runner.py", "investigation/physics.py",
+            "investigation/evaluation.py", "candidate/wheel_actuator.py"} <= set(hashes)
+    assert results[0]["protocol_manifest"]["runtime_versions"]["openai"]
+    assert protocol_identity(max_api_requests=2)["fingerprint"] != protocol_identity(max_api_requests=1)["fingerprint"]
+    assert protocol_identity(max_seconds=1801)["fingerprint"] != protocol_identity(max_seconds=1800)["fingerprint"]

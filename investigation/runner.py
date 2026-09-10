@@ -2,17 +2,51 @@
 
 from datetime import datetime, timezone
 import hashlib
+from importlib.metadata import version
 import json
 from pathlib import Path
+import sys
 import time
 
 from openai import APIError
 
-from .api import MODEL, REASONING_EFFORT, request_response
+from .api import DEFAULT_PROFILE, get_profile, request_response
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PROMPTS = Path(__file__).with_name("prompts")
+
+
+def protocol_identity(max_api_requests=12, max_seconds=1800):
+    """Hash the shared experiment protocol, excluding selected model and run ids.
+
+    Expanded evidence contains opaque ids and elapsed times, so hash its source
+    templates and generator code instead. This is a host audit, not agent input.
+    """
+    from .broker import LIMITS, TOOL_SCHEMAS
+
+    paths = [
+        "investigation/prompts/system.md", "investigation/prompts/task.md",
+        "contracts/WHEEL_ACTUATOR.md", "candidate/wheel_actuator.py",
+        "investigation/api.py", "investigation/broker.py", "investigation/patching.py", "investigation/runner.py",
+        "investigation/physics.py", "investigation/evaluation.py",
+        "component_worker/client.py", "component_worker/runtime.py",
+        "simulator/config.py", "simulator/model.py", "simulator/runner.py",
+        "simulator/private/thermal.py",
+    ]
+    paths.extend(str(path.relative_to(ROOT)) for path in sorted((ROOT / "simulator/assets").glob("*.xml")))
+    manifest = {
+        "schema_version": 1,
+        "source_sha256": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in paths},
+        "tool_schema_sha256": hashlib.sha256(json.dumps(TOOL_SCHEMAS, sort_keys=True).encode()).hexdigest(),
+        "caps": {"max_api_requests": max_api_requests, "max_seconds": max_seconds,
+                 "max_tool_calls": 30, "tool_attempts": dict(LIMITS),
+                 "max_output_tokens": 8192, "debrief_max_output_tokens": 2048},
+        "runtime_versions": {"python": ".".join(str(part) for part in sys.version_info[:3]),
+                             "mujoco": version("mujoco"), "numpy": version("numpy"), "openai": version("openai")},
+    }
+    fingerprint = hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return {"fingerprint": fingerprint, "manifest": manifest}
 
 
 def timestamp():
@@ -34,9 +68,9 @@ class EventLog:
         if kind == "tool_call":
             arguments = values.get("arguments", {})
             note = arguments.get("hypothesis") or arguments.get("rationale") or ""
-            print(f"Astra tool: {values['name']} · {str(note)[:300]}", flush=True)
+            print(f"Investigator tool: {values['name']} · {str(note)[:300]}", flush=True)
         elif kind in {"assistant_message", "reasoning_summary"}:
-            label = "Astra" if kind == "assistant_message" else "Astra summary"
+            label = "Investigator" if kind == "assistant_message" else "Investigator summary"
             print(f"{label}: {values.get('text', '')[:1200]}", flush=True)
         elif kind in {"status", "error"}:
             print(values.get("message", ""), flush=True)
@@ -75,7 +109,7 @@ def add_usage(total, response):
 
 
 def run_session(client, broker, run_dir: Path, *, max_api_requests=12, max_seconds=1800,
-                log=None, evaluate=None):
+                log=None, evaluate=None, profile=DEFAULT_PROFILE):
     """Run a fresh API context. The broker is the only model-accessible capability.
 
     No shell, browser, filesystem, built-in code execution, or other connectors
@@ -85,10 +119,13 @@ def run_session(client, broker, run_dir: Path, *, max_api_requests=12, max_secon
 
     if not 1 <= max_api_requests <= 20 or not 60 <= max_seconds <= 7200:
         raise ValueError("Invalid pilot request/time budget")
+    selected = get_profile(profile)
+    protocol = protocol_identity(max_api_requests, max_seconds)
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     log = log or EventLog(run_dir / "events.jsonl")
-    metadata = {"model": MODEL, "reasoning_effort": REASONING_EFFORT,
+    metadata = {"profile": selected.name, "model": selected.model, "reasoning_effort": selected.reasoning_effort,
+                "protocol_fingerprint": protocol["fingerprint"], "protocol_manifest": protocol["manifest"],
                 "status": "running", "start_at": timestamp(), "end_at": None,
                 "api_requests": 0, "agent_submitted": False, "freeze_reason": None,
                 "max_api_requests": max_api_requests, "max_seconds": max_seconds,
@@ -96,7 +133,7 @@ def run_session(client, broker, run_dir: Path, *, max_api_requests=12, max_secon
                                              "reasoning_tokens", "cached_input_tokens")}}
     save_json(run_dir / "metadata.json", metadata)
     started = time.monotonic()
-    log("status", message=f"Starting fresh {MODEL} investigation with {REASONING_EFFORT} reasoning.")
+    log("status", message=f"Starting fresh {selected.model} investigation with {selected.reasoning_effort} reasoning.")
     try:
         log("status", message="Preparing initial measured evidence and baseline predictions...")
         evidence = broker.initial_evidence()
@@ -122,14 +159,14 @@ def run_session(client, broker, run_dir: Path, *, max_api_requests=12, max_secon
         while metadata["api_requests"] < max_api_requests and time.monotonic() - started < max_seconds:
             metadata["api_requests"] += 1
             save_json(run_dir / "metadata.json", metadata)
-            log("status", message=f"API request {metadata['api_requests']}/{max_api_requests}: Astra / medium.")
-            response = request_response(client, conversation, TOOL_SCHEMAS)
+            log("status", message=f"API request {metadata['api_requests']}/{max_api_requests}: {selected.model} / {selected.reasoning_effort}.")
+            response = request_response(client, conversation, TOOL_SCHEMAS, profile=selected.name)
             add_usage(metadata["usage"], response)
             log("api_response", response_id=response.id, model=response.model,
                 reasoning_effort=response.reasoning.effort if response.reasoning else None,
                 usage=response.usage.model_dump() if response.usage else None, status=response.status)
-            if response.model != MODEL or not response.reasoning or response.reasoning.effort != REASONING_EFFORT:
-                raise RuntimeError("The API did not confirm the requested Astra/medium configuration")
+            if response.model != selected.model or not response.reasoning or response.reasoning.effort != selected.reasoning_effort:
+                raise RuntimeError("The API did not confirm the requested model/reasoning profile")
             visible_output(response, log)
             if response.status != "completed":
                 metadata["freeze_reason"] = "api_response_incomplete"
@@ -233,13 +270,14 @@ def run_session(client, broker, run_dir: Path, *, max_api_requests=12, max_secon
                         "correct or incorrect, and the remaining uncertainty. This small synthetic "
                         "test does not establish general physical validity or research novelty. No further edits or tools."})
                     metadata["api_requests"] += 1
-                    log("status", message="Asking Astra for a debrief of the measured results; tools are disabled.")
-                    debrief = request_response(client, conversation, TOOL_SCHEMAS, max_output_tokens=2048, final=True)
+                    log("status", message="Asking the investigator for a debrief of the measured results; tools are disabled.")
+                    debrief = request_response(client, conversation, TOOL_SCHEMAS, max_output_tokens=2048,
+                                               final=True, profile=selected.name)
                     add_usage(metadata["usage"], debrief)
                     log("api_response", response_id=debrief.id, model=debrief.model,
                         reasoning_effort=debrief.reasoning.effort if debrief.reasoning else None,
                         usage=debrief.usage.model_dump() if debrief.usage else None, status=debrief.status)
-                    if debrief.model != MODEL or not debrief.reasoning or debrief.reasoning.effort != REASONING_EFFORT:
+                    if debrief.model != selected.model or not debrief.reasoning or debrief.reasoning.effort != selected.reasoning_effort:
                         raise RuntimeError("Unexpected debrief model configuration")
                     visible_output(debrief, log)
                     metadata["debrief_status"] = debrief.status

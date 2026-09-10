@@ -57,7 +57,7 @@ def test_completed_report_uses_measured_cases_attributed_actions_and_frozen_sour
     assert "| reserved_1 | 20.000 | 26.000 | 25.000 | 5.000 | 1.000 | no |" in text
     assert "Candidate error decreased on 2 of 2 comparable cases" in text
     assert "Brief API-provided reasoning summary" in text
-    assert "These are Astra’s stated explanations and brief API-provided summaries." in text
+    assert "These are the investigator’s stated explanations and brief API-provided summaries." in text
     assert "> A matched rest experiment would distinguish the hypotheses." in text
     assert "Tool call: `run_experiment`" in text
     assert "[Frozen candidate](evaluation/frozen_candidate.py)" in text
@@ -168,3 +168,18 @@ def test_trace_links_do_not_escape_run_directory_or_invent_missing_files(tmp_pat
     text = build_report(tmp_path).read_text()
     assert "Full recorded traces" not in text
     assert "unrelated" not in text
+
+
+def test_sol_report_uses_recorded_profile_without_astra_attribution(tmp_path):
+    write_json(tmp_path / "metadata.json", {
+        "model": "gpt-5.6-sol", "reasoning_effort": "high", "profile": "sol-high",
+        "protocol_fingerprint": "same-protocol-fixture", "status": "completed", "agent_submitted": True,
+    })
+    (tmp_path / "events.jsonl").write_text(json.dumps({"type": "assistant_message", "text": "I checked the measured response."}) + "\n")
+    text = build_report(tmp_path).read_text()
+    assert text.startswith("# Investigator report\n")
+    assert "`gpt-5.6-sol`" in text and "`high`" in text
+    assert "| profile | sol-high |" in text
+    assert "same-protocol-fixture" in text
+    assert "the investigator’s stated explanations" in text
+    assert "Astra" not in text

@@ -11,54 +11,117 @@ component state. Baseline and brake-fade comparisons are the first integrated
 model-repair benchmark. The original one-axis rig remains available for fast,
 controlled tests.
 
-The **Astra investigation loop is implemented**: a fresh API session can inspect
+The **investigation loop is implemented**: a fresh API session can inspect
 the component, request experiments, patch its source, validate development cases,
-and freeze a candidate for separate evaluation. Each run records what Astra said,
+and freeze a candidate for separate evaluation. Each run records what the model said,
 which tools it used, the exact source changes, and measured prediction errors.
 Check that run's report for its outcome; having the loop implemented does not
 establish that a repair succeeded.
+
+## Open the dashboard
+
+From the repository root, with the [Python environment](#setup-and-checks) installed
+and Node.js/npm available:
+
+```sh
+cd frontend
+npm ci
+npm run build
+cd ..
+.venv/bin/python -m dashboard
+```
+
+Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)** (`localhost:8765` also works).
+The dashboard shows saved runs and live LLM activity, experiment results, editable
+component source changes, and the exact prompts. Completed runs can replay the
+original, candidate and reference cars with synchronized telemetry and recorded
+MuJoCo frames. Frames are rendered from saved commands and frozen source; they
+are published only after their outcome matches the recorded evaluation.
+
+Select **Astra / medium** or **Sol / high**, then click **Start run**. This starts a fresh
+API investigation with the configured key, a limit of **12 API requests** and a
+**1,800-second investigation budget**. The dashboard launches one investigation
+at a time. Results appear when evaluation finishes; frame generation runs in the
+background afterward, and the replay becomes available as frames are ready.
+Opening an existing run does not start another API investigation. Full local run
+records and replay frames live under ignored `runs/`; the compact comparison and
+frozen components below are shared in Git.
+
+For completed runs launched from the terminal, generate replay media separately;
+replace `COMPLETED_RUN_ID` with the directory name under `runs/`:
+
+```sh
+.venv/bin/python -m dashboard.media runs/COMPLETED_RUN_ID
+```
+
+## Experiment records
 
 The [first live Astra/medium experiment](docs/astra-pilot-20260910/README.md)
 produced an actual stateful Python repair. Reserved-case mean error fell from
 10.29 m to 2.93 m, but one case exceeded its tolerance, so the full prediction
 criteria failed. The shared record includes Astra's unchanged source and results.
 
+The [Astra/medium and Sol/high comparison](docs/astra-sol-comparison-20260910/comparison.md)
+uses two fresh runs with the same recorded **protocol fingerprint**: shared
+prompts, tools, initial component, physics, evaluation rules and budgets. The
+selected model and reasoning effort differ. The older Astra pilot is a separate
+record; it used an earlier prompt and is not the matched Astra side of this pair.
+Read the comparison record for measured outcomes and limitations; one pair does
+not establish a general model ranking.
+
+In this matched pair, **`gpt-6-astra` / `medium`** added persistent per-wheel
+state and passed all three reserved cases, reducing mean stopping-distance error
+from **10.292 m to 0.405 m**. **`gpt-5.6-sol` / `high`** submitted the unchanged
+component after three rejected patch-format attempts, so its error remained
+**10.292 m**; its proposed physics repair was never executed. Both used 12 API
+requests. See the [result interpretation](docs/astra-sol-comparison-20260910/README.md)
+for the predictions, source changes and limits of this single pair.
+
 The optional `--developer-check` component in the simulator comparison remains a
 **manually authored, reference-informed solvability check**. It is separate from
-the actual Astra experiment below.
+the API investigations below.
 
-## Run an Astra investigation
+## Run an investigation from the terminal
 
-The pilot uses exactly **`gpt-6-astra` with `medium` reasoning** through the OpenAI
-Responses API. It requires one `OPENAI_API_KEY` with access to that model. Configure
+The default profile is **`astra-medium`**, which uses **`gpt-6-astra` with `medium`
+reasoning** through the OpenAI Responses API. Select **`--profile sol-high`** to
+use **`gpt-5.6-sol` with `high` reasoning**. Both use the same `OPENAI_API_KEY`, which
+must have access to the selected model. Configure
 the key in the existing ignored `.env` or the host environment; see
-[.env.example](.env.example) for placeholders. The optional configuration values
-must match this pilot:
+[.env.example](.env.example) for placeholders. The model and effort are pinned by
+the selected profile; optional environment settings must match it:
 
 ```dotenv
 OPENAI_API_KEY=your-project-key
 ASTRA_MODEL=gpt-6-astra
 ASTRA_REASONING_EFFORT=medium
+SOL_MODEL=gpt-5.6-sol
+SOL_REASONING_EFFORT=high
 ```
 
 The investigation loads `.env` itself. Values in the selected file take precedence
-over shell variables; `--env-file path/to/file` selects another file. A different
-model or reasoning effort is rejected. Credentials stay in the host API adapter
+over shell variables; `--env-file path/to/file` selects another file. An override
+that conflicts with the selected profile is rejected. There is no model fallback.
+Credentials stay in the host API adapter
 and are not supplied to the candidate worker. Simulator-only commands do not
 load `.env` or make API requests.
 
 ```sh
-# Make one small request to check the exact model and reasoning configuration.
+# Make one small request with the default Astra/medium profile.
 .venv/bin/python -m investigation --check-key
 
-# Run a fresh investigation; creates a unique runs/astra-... directory.
+# Run a fresh Astra/medium investigation in a unique directory under runs/.
 .venv/bin/python -m investigation
+
+# Run a fresh Sol/high investigation with the same configured API key.
+.venv/bin/python -m investigation --profile sol-high
 
 # Explicit request/time limits and a new output directory.
 .venv/bin/python -m investigation --max-api-requests 12 --max-seconds 1800 --output runs/astra-pilot-001
 ```
 
-The installed console entry point is `realitypatch-astra`. Defaults are 12 API
+The installed console entry point is `realitypatch-astra`; it also accepts
+`--profile sol-high`. Defaults are 12 API
 requests, a 1,800-second investigation budget, and at most 8,192 output tokens per
 request. Each API request has a 180-second timeout and no automatic retry or model
 fallback. Limits are checked between requests/tools; in-flight work and the final
@@ -66,7 +129,7 @@ frozen evaluation can extend the overall elapsed time. Use a new `--output`
 directory for each run. Physics caching defaults to `runs/investigation-cache/`.
 
 The broker supplies two initial measured cases and corresponding original-model
-predictions. Astra then has these seven tools, with bounded attempts:
+predictions. The selected model then has these seven tools, with bounded attempts:
 
 | Tool | Purpose and limit |
 | --- | --- |
@@ -92,7 +155,7 @@ run's `prompts/`. The remote model receives only these messages, source, and bro
 results. Keep builder documents and private engine/scenario files outside its
 investigation context.
 
-Open `report.md` in the printed output directory to follow Astra's hypotheses,
+Open `report.md` in the printed output directory to follow the model's hypotheses,
 stated reasons, experiments, edits, and measured outcomes. The main artifacts are:
 
 | Artifact | Contents |
@@ -119,11 +182,11 @@ holdouts. Source-extension indicators are recorded separately from these
 prediction criteria.
 
 A `completed` run means the harness finished; read the report's predeclared
-criteria verdict to determine predictive success. If Astra stops without
+criteria verdict to determine predictive success. If the model stops without
 submission, the report distinguishes a host-frozen candidate from an explicit
 agent submission. API failures and partial runs retain their recorded evidence
 and source changes. The developer-written check is never substituted for an
-Astra repair.
+API-authored repair.
 
 ## Start on this Mac
 
@@ -149,7 +212,7 @@ and separate `candidate/`, `reference/` and optional `developer_check/` recordin
 Each recording has public observations/outcomes and private builder diagnostics.
 `predictions.json` records candidate source hashes and completion timestamps
 **before the reference trial starts**. This ordering is useful infrastructure;
-the separate Astra investigation performs the frozen reserved evaluation
+the separate API investigation performs the frozen reserved evaluation
 described above.
 
 Use `--no-wall` to measure full stopping distances. With a wall, collision and
@@ -214,7 +277,8 @@ Live viewer: **Space** pauses, **R** repeats retaining heat/completed faults,
 **N** resets and replays the whole experiment, **Esc** closes. Double-clicking
 `launch_simulator.command` also opens the reference viewer. CLI controls cover
 speed, brake strength, brake onset, wall position, conditioning cycles and rest.
-The browser control panel and human “inject failure” button remain future work.
+The dashboard supports recorded replays and bounded investigation launches;
+direct driving controls and a human “inject failure” button remain future work.
 See [the simulator contract](simulator/contracts.md) and
 [physics implementation notes](simulator/IMPLEMENTATION.md) for recording,
 reset, contact and wall-free counterfactual semantics.
@@ -266,8 +330,9 @@ The parameter-only fitted baseline currently belongs to this small rig.
 
 ## Parallel work
 
-The Astra pilot above uses one key and its fixed model/effort configuration.
-A Sol comparison remains later work. OpenAI account setup is described in the
+Both investigation profiles use one key and their pinned model/effort settings.
+The fresh matched comparison above records both under the same protocol.
+OpenAI account setup is described in the
 [official quickstart](https://developers.openai.com/api/docs/quickstart).
 
 **Person 1:** own car mechanics, private scenarios, observations, component
