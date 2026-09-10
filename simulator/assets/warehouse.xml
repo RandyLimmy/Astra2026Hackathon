@@ -1,0 +1,85 @@
+<mujoco model="Warehouse payload inspection robot">
+  <compiler angle="radian"/>
+  <option timestep="0.002" integrator="implicitfast" cone="elliptic" iterations="100"/>
+  <visual><global offwidth="1280" offheight="720"/><quality shadowsize="2048"/>
+    <headlight ambient="0.45 0.45 0.45" diffuse="0.65 0.65 0.65" specular="0.1 0.1 0.1"/>
+  </visual>
+  <default>
+    <geom friction="0.9 0.003 0.0001" solref="0.012 1" solimp="0.95 0.99 0.001"/>
+    <joint damping="0.04" armature="0.002"/>
+    <default class="visual"><geom contype="0" conaffinity="0" mass="0"/></default>
+    <default class="drive"><geom type="ellipsoid" size="0.20 0.055 0.20" mass="1.2" rgba="0.055 0.075 0.09 1" priority="2" friction="0.9 0.003 0.0001"/></default>
+  </default>
+  <asset>
+    <texture name="sky" type="skybox" builtin="gradient" rgb1="0.12 0.19 0.28" rgb2="0.50 0.62 0.69" width="512" height="3072"/>
+    <texture name="floor" type="2d" builtin="checker" rgb1="0.28 0.33 0.36" rgb2="0.32 0.37 0.40" width="512" height="512"/>
+    <material name="floor_material" texture="floor" texrepeat="40 40" reflectance="0.08"/>
+  </asset>
+  <worldbody>
+    <light pos="2 -4 9" dir="0 0 -1" diffuse="0.9 0.9 0.9"/>
+    <light pos="-3 5 7" dir="0 0 -1" diffuse="0.5 0.6 0.7"/>
+    <geom name="floor" type="plane" size="30 30 0.1" material="floor_material"/>
+    <geom class="visual" type="box" pos="6 -1.3 0.003" size="10 0.025 0.003" rgba="0.96 0.72 0.23 1"/>
+    <geom class="visual" type="box" pos="6 1.3 0.003" size="10 0.025 0.003" rgba="0.96 0.72 0.23 1"/>
+    <geom class="visual" type="box" pos="0 0 0.004" size="0.025 1.3 0.003" rgba="0.7 0.8 0.84 1"/>
+    <!-- Context only: shelving beyond the diagnostic aisle never affects contact. -->
+    <geom class="visual" type="box" pos="4 4.5 0.45" size="5 0.5 0.04" rgba="0.43 0.52 0.59 1"/>
+    <geom class="visual" type="box" pos="4 4.5 1.4" size="5 0.5 0.04" rgba="0.43 0.52 0.59 1"/>
+    <geom class="visual" type="box" pos="4 4.5 2.35" size="5 0.5 0.04" rgba="0.43 0.52 0.59 1"/>
+    <geom class="visual" type="box" pos="-1 4.5 1.2" size="0.055 0.53 1.2" rgba="0.91 0.47 0.13 1"/>
+    <geom class="visual" type="box" pos="2.33 4.5 1.2" size="0.055 0.53 1.2" rgba="0.91 0.47 0.13 1"/>
+    <geom class="visual" type="box" pos="5.66 4.5 1.2" size="0.055 0.53 1.2" rgba="0.91 0.47 0.13 1"/>
+    <geom class="visual" type="box" pos="9 4.5 1.2" size="0.055 0.53 1.2" rgba="0.91 0.47 0.13 1"/>
+    <geom class="visual" type="box" pos="0 4.5 0.83" size="0.55 0.38 0.34" rgba="0.73 0.49 0.27 1"/>
+    <geom class="visual" type="box" pos="1.35 4.5 0.78" size="0.43 0.36 0.29" rgba="0.82 0.62 0.35 1"/>
+    <geom class="visual" type="box" pos="3.5 4.5 1.78" size="0.68 0.38 0.34" rgba="0.73 0.49 0.27 1"/>
+    <geom class="visual" type="box" pos="5 4.5 0.78" size="0.43 0.36 0.29" rgba="0.82 0.62 0.35 1"/>
+    <geom class="visual" type="box" pos="7 4.5 1.83" size="0.55 0.38 0.39" rgba="0.77 0.53 0.3 1"/>
+    <body name="chassis" pos="0 0 0.242">
+      <freejoint name="chassis_free"/>
+      <geom name="chassis_geom" type="box" size="0.53 0.29 0.05" mass="22" rgba="0.07 0.58 0.69 1"/>
+      <geom class="visual" type="box" pos="0 0 0.11" size="0.48 0.31 0.02" rgba="0.14 0.21 0.27 1"/>
+      <geom class="visual" type="box" pos="0.535 0.18 0.015" size="0.008 0.055 0.022" rgba="1 0.94 0.6 1"/>
+      <geom class="visual" type="box" pos="0.535 -0.18 0.015" size="0.008 0.055 0.022" rgba="1 0.94 0.6 1"/>
+      <geom class="visual" type="capsule" fromto="-0.28 -0.26 0.145 -0.28 0.48 0.034" size="0.012" rgba="0.7 0.77 0.8 1"/>
+      <geom class="visual" type="capsule" fromto="0.28 -0.26 0.145 0.28 0.48 0.034" size="0.012" rgba="0.7 0.77 0.8 1"/>
+      <site name="imu" pos="0 0 0"/>
+      <camera name="overview" mode="track" pos="1 -6 5" xyaxes="1 0 0 0 0.64 0.77" fovy="60"/>
+      <camera name="chase" mode="track" pos="-2.2 -2.2 1.8" xyaxes="0.707 -0.707 0 0.35 0.35 0.87" fovy="46"/>
+      <camera name="side" mode="track" pos="0 -5 1.7" xyaxes="1 0 0 0 0.28 0.96" fovy="60"/>
+      <body name="wheel_left" pos="0.18 0.355 -0.04">
+        <joint name="wheel_left" axis="0 1 0" frictionloss="0.025"/>
+        <geom name="tire_left" class="drive"/>
+        <geom class="visual" type="box" size="0.14 0.057 0.015" rgba="0.8 0.85 0.88 1"/>
+      </body>
+      <body name="wheel_right" pos="0.18 -0.355 -0.04">
+        <joint name="wheel_right" axis="0 1 0" frictionloss="0.025"/>
+        <geom name="tire_right" class="drive"/>
+        <geom class="visual" type="box" size="0.14 0.057 0.015" rgba="0.8 0.85 0.88 1"/>
+      </body>
+      <body name="caster" pos="-0.36 0 -0.09">
+        <joint name="caster_swivel" axis="0 0 1" damping="0.15" frictionloss="0.008"/>
+        <geom type="capsule" fromto="0 0 0 -0.08 0 -0.04" size="0.022" mass="0.25" rgba="0.6 0.66 0.7 1" contype="0" conaffinity="0"/>
+        <body name="caster_wheel" pos="-0.08 0 -0.06">
+          <joint name="caster_roll" axis="0 1 0" damping="0.002" frictionloss="0.006"/>
+          <geom name="caster_tire" type="ellipsoid" size="0.09 0.025 0.09" mass="0.3" priority="2" friction="0.85 0.001 0.0001" rgba="0.07 0.09 0.11 1"/>
+          <geom class="visual" type="box" size="0.06 0.027 0.01" rgba="0.72 0.77 0.8 1"/>
+        </body>
+      </body>
+      <body name="cargo" pos="0 0 0.265">
+        <joint name="cargo_slide" type="slide" axis="0 1 -0.15" range="0 0.24" damping="5" armature="0" solreflimit="0.02 1"/>
+        <geom name="cargo_box" type="box" size="0.32 0.225 0.13" mass="8" contype="0" conaffinity="0" rgba="0.77 0.48 0.22 1"/>
+        <geom class="visual" type="box" pos="0 0 0.131" size="0.045 0.226 0.001" rgba="0.92 0.75 0.43 1"/>
+        <geom class="visual" type="box" pos="0.321 0 0" size="0.001 0.085 0.065" rgba="0.94 0.9 0.76 1"/>
+        <geom class="visual" type="box" pos="0 0 0.24" size="0.21 0.18 0.11" rgba="0.65 0.38 0.16 1"/>
+        <geom class="visual" type="box" pos="0 0 0.351" size="0.035 0.181 0.001" rgba="0.9 0.72 0.41 1"/>
+      </body>
+    </body>
+  </worldbody>
+  <equality><joint name="cargo_latch" joint1="cargo_slide" polycoef="0 0 0 0 0" solref="0.005 1"/></equality>
+  <actuator>
+    <motor name="left" joint="wheel_left" gear="3" ctrlrange="-1 1"/>
+    <motor name="right" joint="wheel_right" gear="3" ctrlrange="-1 1"/>
+  </actuator>
+  <sensor><accelerometer name="acceleration" site="imu"/><gyro name="angular_velocity" site="imu"/></sensor>
+</mujoco>

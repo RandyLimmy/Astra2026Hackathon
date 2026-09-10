@@ -1,5 +1,15 @@
 # RealityPatch
 
+Three additional simulator platforms are available: **post-crash car damage**,
+**quadruped body faults**, and **quadrotor degradation**. They include sixteen
+presets, controlled probes, recordings and nominal-before-reality comparisons.
+See [the platform guide](simulator/PLATFORMS.md) for launch commands and measured
+behavior. Start the robot-dog demo with
+`.venv/bin/mjpython -m simulator view quadruped_demo`.
+Press **Space** to play, pause, or replay the complete scenario. The
+[demo guide](simulator/DEMO_GUIDE.md) has launch commands for the dog, car,
+warehouse robot, and drone, with their expected motion and failure outcomes.
+
 The four-wheel MuJoCo car now runs with an **isolated, editable Python brake
 component**. The car supplies rigid-body mechanics, rotating wheels, tire
 contacts and collisions; the component supplies four brake torque limits and
@@ -340,3 +350,11 @@ coupling, and physics validation. **Person 2:** own the investigation broker,
 OpenAI adapter, prompts, source versions, report, and frozen evaluation. Review
 actual run evidence together, separating a successful prediction from a confirmed
 source extension. The remaining project scope is in [idea1PLan.md](idea1PLan.md).
+
+Warehouse payload faults and timed warehouse/drone diagnostic maneuvers are
+available in the [intervention lab guide](simulator/LAB.md), including replay
+commands, measured comparisons, and the handoff for Astra model maintenance.
+
+For the presentation-ready drone flight and consistent camera/speed/model controls
+across all four demos, use the [demo guide](simulator/DEMO_GUIDE.md). Start with
+`.venv/bin/mjpython -m simulator view drone_demo`, then press Space.

@@ -93,8 +93,8 @@ def compare(config: Experiment, output: Path, *, candidate: Path = DEFAULT_CANDI
                 raise ValueError("Candidate source exceeds the permitted size")
             source_snapshot = output / name / "actuator.py"
             source_snapshot.parent.mkdir(parents=True, exist_ok=True)
-            with source_snapshot.open("xb") as stream:
-                stream.write(source_bytes)
+            with source_snapshot.open("xb") as snapshot_stream:
+                snapshot_stream.write(source_bytes)
             # The worker copies and hashes the exact source it executes. Never
             # import this source into the host or infer state from diagnostics.
             with WheelActuatorWorker(source_snapshot) as worker:

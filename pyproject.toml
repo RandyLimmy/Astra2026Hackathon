@@ -31,7 +31,7 @@ include = ["sim*", "contracts*", "component_worker*", "reference_host*", "demo*"
 
 [tool.setuptools.package-data]
 sim = ["*.xml"]
-simulator = ["assets/*.xml", "public/*.xml", "public/*.json", "public/*.md", "private/*.json", "private/scenarios/*.json", "*.md"]
+simulator = ["assets/*.xml", "assets/platforms/*.xml", "experiments/*.json", "public/*.xml", "public/*.json", "public/*.md", "private/*.json", "private/scenarios/*.json", "*.md"]
 contracts = ["*.md"]
 investigation = ["prompts/*.md"]
 

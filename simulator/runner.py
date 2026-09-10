@@ -1,7 +1,7 @@
 """Deterministic MuJoCo experiment runner. No agent or model-repair logic."""
 from dataclasses import replace
 import math
-from typing import Callable
+from typing import Callable, cast
 
 import mujoco
 import numpy as np
@@ -101,6 +101,23 @@ class Simulator:
         mujoco.mj_forward(self.model, self.data)
         if self.actuator is not None:
             self.actuator.reposition()
+
+    def reset_replay(self) -> None:
+        """Replay this configuration and its preparation without replacing model/data.
+
+        A live viewer retains those objects. Restore the simulator's persistent
+        fault state, then use the same declared conditioning and trial resets as
+        a fresh run. Use reset_full instead when changing the physical configuration.
+        """
+        mujoco.mj_resetData(self.model, self.data)
+        self.elapsed = 0.0
+        self.temperature.fill(thermal.AMBIENT)
+        self.efficiency.fill(1.0)
+        self.events.clear()
+        if self.actuator is not None:
+            self.actuator.reset()
+        self.reset_trial()
+        self.prepare()
 
     def _events(self):
         config = self.config
@@ -406,7 +423,7 @@ class Simulator:
                   "warnings": self.data.warning.number.tolist(),
                   "mujoco_version": mujoco.__version__, "public": public}
         if self.actuator is None:
-            result.update(initial_temperature=start_temperature.tolist(),
+            result.update(initial_temperature=cast(np.ndarray, start_temperature).tolist(),
                           final_temperature=self.temperature.tolist())
         return result
 

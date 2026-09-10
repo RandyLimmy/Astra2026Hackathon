@@ -21,6 +21,7 @@ import sysconfig
 import tempfile
 import threading
 import time
+from typing import IO, cast
 
 
 MAX_MESSAGE_BYTES = 65_536
@@ -145,7 +146,7 @@ class ActuatorWorker:
         self._selector = None
         self._buffer = bytearray()
         self._sequence = 0
-        self._resource_failure = None
+        self._resource_failure: WorkerError | None = None
         self._watchdog_stop = threading.Event()
         self._watchdog = None
         if not sandbox or sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file():
@@ -178,7 +179,7 @@ class ActuatorWorker:
                 bufsize=0, close_fds=True, start_new_session=True,
             )
             self._selector = selectors.DefaultSelector()
-            self._selector.register(self._process.stdout, selectors.EVENT_READ)
+            self._selector.register(cast(IO[bytes], self._process.stdout), selectors.EVENT_READ)
             libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
             self._pidinfo = libproc.proc_pidinfo
             self._pidinfo.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_int]
@@ -208,7 +209,7 @@ class ActuatorWorker:
         self.close()
 
     def _watch_resources(self) -> None:
-        process = self._process
+        process = cast(subprocess.Popen[bytes], self._process)
         while not self._watchdog_stop.wait(0.01):
             if process.poll() is not None:
                 return
@@ -228,6 +229,10 @@ class ActuatorWorker:
                 return
 
     def _read_message(self) -> dict:
+        # Requests only run after the process and its PIPE handles are initialized.
+        process = cast(subprocess.Popen[bytes], self._process)
+        selector = cast(selectors.BaseSelector, self._selector)
+        stdout = cast(IO[bytes], process.stdout)
         deadline = time.monotonic() + self.timeout_s
         while b"\n" not in self._buffer:
             if self._resource_failure is not None:
@@ -235,9 +240,9 @@ class ActuatorWorker:
             if len(self._buffer) > MAX_MESSAGE_BYTES:
                 raise WorkerError("Actuator response exceeds the permitted size.")
             remaining = deadline - time.monotonic()
-            if remaining <= 0 or not self._selector.select(remaining):
+            if remaining <= 0 or not selector.select(remaining):
                 raise WorkerTimeout("Actuator exceeded its request time budget.")
-            chunk = os.read(self._process.stdout.fileno(), min(4096, MAX_MESSAGE_BYTES + 1 - len(self._buffer)))
+            chunk = os.read(stdout.fileno(), min(4096, MAX_MESSAGE_BYTES + 1 - len(self._buffer)))
             if not chunk:
                 if self._resource_failure is not None:
                     raise self._resource_failure
@@ -264,14 +269,14 @@ class ActuatorWorker:
             payload = json.dumps(request, allow_nan=False, separators=(",", ":")).encode() + b"\n"
             if len(payload) > MAX_MESSAGE_BYTES:
                 raise WorkerError("Actuator request exceeds the permitted size.")
-            self._process.stdin.write(payload)
+            cast(IO[bytes], self._process.stdin).write(payload)
             result = self._read_message()
             if result.get("id") != self._sequence or type(result.get("ok")) is not bool:
                 raise WorkerError("Actuator returned an invalid response.")
             if not result["ok"]:
                 # Never forward arbitrary exception text or tracebacks from code.
                 reason = result.get("reason")
-                safe_reasons = {
+                safe_reasons: dict[object, str] = {
                     "invalid_state": "Actuator returned invalid numeric state.",
                     "invalid_force": "Actuator returned an invalid braking force.",
                     "invalid_torque": "Actuator returned invalid wheel braking torque limits.",
@@ -300,8 +305,8 @@ class ActuatorWorker:
             raise WorkerError("Isolated actuator communication failed.") from None
 
     def force(self, brake: float, velocity: float) -> float:
-        return self._request("force", brake=_finite(brake, "Brake command", lower=0, upper=1),
-                             velocity=_finite(velocity, "Velocity", upper=1e6))
+        return cast(float, self._request("force", brake=_finite(brake, "Brake command", lower=0, upper=1),
+                                         velocity=_finite(velocity, "Velocity", upper=1e6)))
 
     def advance(self, brake: float, velocity: float, applied_force: float, dt: float) -> None:
         self._request("advance", brake=_finite(brake, "Brake command", lower=0, upper=1),
@@ -313,7 +318,7 @@ class ActuatorWorker:
         self._request("reset")
 
     def inspect_state(self) -> dict:
-        return self._request("inspect")
+        return cast(dict, self._request("inspect"))
 
     def close(self) -> None:
         self._watchdog_stop.set()
@@ -351,11 +356,12 @@ class WheelActuatorWorker(ActuatorWorker):
     _protocol = "wheel_v2"
 
     def torque_limits(self, brake: float, omega: list[float]) -> list[float]:
-        return self._request("torque_limits",
-                             brake=_finite(brake, "Brake command", lower=0, upper=1),
-                             omega=_vector4(omega, "Wheel angular velocity", upper=1e6))
+        return cast(list[float], self._request("torque_limits",
+                                              brake=_finite(brake, "Brake command", lower=0, upper=1),
+                                              omega=_vector4(omega, "Wheel angular velocity", upper=1e6)))
 
-    def advance(self, brake: float, mean_omega: list[float], applied_torque: list[float], dt: float) -> None:
+    # wheel_v2 deliberately replaces scalar_v1 inputs with four-wheel vectors.
+    def advance(self, brake: float, mean_omega: list[float], applied_torque: list[float], dt: float) -> None:  # type: ignore[override]
         self._request("advance", brake=_finite(brake, "Brake command", lower=0, upper=1),
                       omega=_vector4(mean_omega, "Mean wheel angular velocity", upper=1e6),
                       applied_torque=_vector4(applied_torque, "Applied wheel braking torque"),

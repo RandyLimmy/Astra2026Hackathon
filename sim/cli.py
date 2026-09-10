@@ -113,7 +113,7 @@ def show(args):
         print(f"Saved {args.output.resolve()}")
     else:
         show_comparison(data["candidate"], data["reference"], title=f"{data['title']} · synthetic replay",
-                        duration_s=args.duration, **kwargs)
+                        duration_s=args.duration, speedup=args.speedup, autoplay=args.autoplay, **kwargs)
 
 
 def export_task(args):
@@ -158,6 +158,8 @@ def main():
             sub.add_argument("--output", type=Path, default=Path("artifacts/scene.png"))
         else:
             sub.add_argument("--duration", type=float, default=None, help="Close after this many wall-clock seconds")
+            sub.add_argument("--speedup", type=float, default=1., help="Recorded playback speed multiplier")
+            sub.add_argument("--autoplay", action="store_true", help="Start replay immediately without waiting for Space")
     sub = commands.add_parser("export-task")
     sub.add_argument("--output", type=Path, default=Path("artifacts/task-package"))
     args = parser.parse_args()

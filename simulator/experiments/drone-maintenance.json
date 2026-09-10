@@ -1,0 +1,11 @@
+{
+  "config": {
+    "duration": 12.0,
+    "fault_at": 3.0,
+    "rotor_effectiveness": 0.75,
+    "voltage_ratio": 0.90,
+    "payload_mass": 0.25,
+    "wind_force": 1.0,
+    "control_delay": 0.06
+  }
+}

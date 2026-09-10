@@ -1,0 +1,81 @@
+<mujoco model="RealityPatch quadrotor test arena">
+  <compiler angle="radian"/>
+  <option timestep="0.002" integrator="implicitfast" gravity="0 0 -9.81"/>
+  <visual><global azimuth="135" elevation="-20"/><map znear="0.01" zfar="100"/>
+    <headlight ambient="0.45 0.45 0.45" diffuse="0.7 0.7 0.7"/>
+  </visual>
+  <asset>
+    <texture name="sky" type="skybox" builtin="gradient" rgb1="0.18 0.27 0.39"
+             rgb2="0.55 0.66 0.74" width="512" height="3072"/>
+    <texture name="floor_grid" type="2d" builtin="checker" rgb1="0.16 0.20 0.24"
+             rgb2="0.21 0.26 0.30" width="512" height="512"/>
+    <material name="floor" texture="floor_grid" texrepeat="20 20" reflectance="0.1"/>
+  </asset>
+  <default>
+    <geom friction="0.8 0.005 0.001" solref="0.015 1" solimp="0.9 0.95 0.001"/>
+    <motor ctrllimited="true" ctrlrange="0 6"/>
+  </default>
+  <worldbody>
+    <light pos="0 -3 7" dir="0 0 -1" diffuse="0.8 0.8 0.8"/>
+    <light pos="3 3 6" dir="-0.4 -0.4 -1" diffuse="0.5 0.5 0.5"/>
+    <geom name="ground" type="plane" size="20 20 0.1" material="floor"/>
+    <geom name="landing_pad" type="cylinder" size="0.55 0.006" pos="0 0 0.006"
+          rgba="0.14 0.55 0.50 1" contype="0" conaffinity="0"/>
+    <!-- Nominal course marks are visible only for the showcase probe. -->
+    <geom name="course_outbound_pad" type="cylinder" size="0.48 0.006" pos="4 0 0.006"
+          rgba="0.12 0.65 0.82 0" contype="0" conaffinity="0"/>
+    <geom name="course_turn_pad" type="cylinder" size="0.48 0.006" pos="4 1.6 0.006"
+          rgba="0.96 0.68 0.2 0" contype="0" conaffinity="0"/>
+    <geom name="course_outbound_path" type="box" size="2 0.025 0.004" pos="2 0 0.015"
+          rgba="0.15 0.7 0.85 0" contype="0" conaffinity="0"/>
+    <geom name="course_cross_path" type="box" size="0.025 0.8 0.004" pos="4 0.8 0.015"
+          rgba="0.96 0.68 0.2 0" contype="0" conaffinity="0"/>
+    <geom name="course_return_path" type="box" size="2.16 0.018 0.004" pos="2 0.8 0.016"
+          rgba="0.45 0.83 0.65 0" contype="0" conaffinity="0"/>
+    <geom name="course_distance_1" type="box" size="0.018 0.18 0.004" pos="1 0 0.02"
+          rgba="0.8 0.86 0.9 0" contype="0" conaffinity="0"/>
+    <geom name="course_distance_2" type="box" size="0.018 0.18 0.004" pos="2 0 0.02"
+          rgba="0.8 0.86 0.9 0" contype="0" conaffinity="0"/>
+    <geom name="course_distance_3" type="box" size="0.018 0.18 0.004" pos="3 0 0.02"
+          rgba="0.8 0.86 0.9 0" contype="0" conaffinity="0"/>
+    <camera name="overview" pos="3.7 -4 3" xyaxes="0.8 0.6 0 -0.19 0.25 0.95" fovy="38"/>
+    <camera name="side" pos="0 -4 2.0" xyaxes="1 0 0 0 0.24 0.971" fovy="40"/>
+    <body name="drone" pos="0 0 2" simple="false">
+      <freejoint name="drone_free"/>
+      <inertial pos="0 0 0" mass="1.2" diaginertia="0.022 0.022 0.042"/>
+      <geom name="fuselage" type="box" size="0.14 0.10 0.05" rgba="0.9 0.93 0.95 1"/>
+      <geom name="nose" type="box" pos="0.14 0 0.015" size="0.02 0.07 0.025"
+            rgba="0.1 0.65 0.9 1" contype="0" conaffinity="0"/>
+      <geom name="arm_0" type="capsule" fromto="0 0 0 0.24 0.24 0" size="0.018" rgba="0.18 0.22 0.27 1"/>
+      <geom name="arm_1" type="capsule" fromto="0 0 0 0.24 -0.24 0" size="0.018" rgba="0.18 0.22 0.27 1"/>
+      <geom name="arm_2" type="capsule" fromto="0 0 0 -0.24 -0.24 0" size="0.018" rgba="0.18 0.22 0.27 1"/>
+      <geom name="arm_3" type="capsule" fromto="0 0 0 -0.24 0.24 0" size="0.018" rgba="0.18 0.22 0.27 1"/>
+      <geom name="rotor_0" type="cylinder" pos="0.24 0.24 0.025" size="0.115 0.008" rgba="0.18 0.65 0.8 0.6"/>
+      <geom name="rotor_1" type="cylinder" pos="0.24 -0.24 0.025" size="0.115 0.008" rgba="0.18 0.65 0.8 0.6"/>
+      <geom name="rotor_2" type="cylinder" pos="-0.24 -0.24 0.025" size="0.115 0.008" rgba="0.45 0.5 0.55 0.6"/>
+      <geom name="rotor_3" type="cylinder" pos="-0.24 0.24 0.025" size="0.115 0.008" rgba="0.45 0.5 0.55 0.6"/>
+      <geom name="leg_0" type="capsule" fromto="0.1 0.08 -0.04 0.1 0.08 -0.17" size="0.012"/>
+      <geom name="leg_1" type="capsule" fromto="0.1 -0.08 -0.04 0.1 -0.08 -0.17" size="0.012"/>
+      <geom name="leg_2" type="capsule" fromto="-0.1 -0.08 -0.04 -0.1 -0.08 -0.17" size="0.012"/>
+      <geom name="leg_3" type="capsule" fromto="-0.1 0.08 -0.04 -0.1 0.08 -0.17" size="0.012"/>
+      <geom name="payload_visual" type="box" pos="0 0 -0.08" size="0.09 0.075 0.035"
+            rgba="0.95 0.55 0.1 0" contype="0" conaffinity="0"/>
+      <site name="rotor_site_0" pos="0.24 0.24 0.025" size="0.006"/>
+      <site name="rotor_site_1" pos="0.24 -0.24 0.025" size="0.006"/>
+      <site name="rotor_site_2" pos="-0.24 -0.24 0.025" size="0.006"/>
+      <site name="rotor_site_3" pos="-0.24 0.24 0.025" size="0.006"/>
+      <site name="imu" pos="0 0 0" size="0.005"/>
+      <camera name="chase" mode="trackcom" pos="-1.4 -2.1 0.9" xyaxes="0.832 -0.554 0 0.187 0.281 0.941" fovy="32"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="rotor_motor_0" site="rotor_site_0" gear="0 0 1 0 0 0.018"/>
+    <motor name="rotor_motor_1" site="rotor_site_1" gear="0 0 1 0 0 -0.018"/>
+    <motor name="rotor_motor_2" site="rotor_site_2" gear="0 0 1 0 0 0.018"/>
+    <motor name="rotor_motor_3" site="rotor_site_3" gear="0 0 1 0 0 -0.018"/>
+  </actuator>
+  <sensor>
+    <gyro name="angular_velocity" site="imu"/>
+    <accelerometer name="specific_force" site="imu"/>
+  </sensor>
+</mujoco>

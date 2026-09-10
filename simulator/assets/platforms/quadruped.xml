@@ -1,0 +1,117 @@
+<mujoco model="RealityPatch articulated quadruped">
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.002" integrator="implicitfast" solver="Newton" iterations="50" cone="elliptic"/>
+  <size nconmax="100" njmax="500"/>
+  <visual><global offwidth="1280" offheight="720"/><quality shadowsize="2048"/><headlight diffuse="0.7 0.7 0.7" ambient="0.45 0.45 0.45"/></visual>
+  <statistic center="0.9 0 0.3" extent="2.5"/>
+  <default>
+    <joint damping="0.15" armature="0.015" limited="true"/>
+    <geom friction="0.9 0.01 0.001" condim="3" solref="0.01 1" solimp="0.9 0.95 0.001"/>
+    <motor ctrllimited="true" ctrlrange="-35 35"/>
+    <default class="limb"><geom type="capsule" size="0.022" rgba="0.23 0.32 0.4 1"/></default>
+  </default>
+  <asset>
+    <texture name="sky" type="skybox" builtin="gradient" rgb1="0.18 0.27 0.39" rgb2="0.55 0.66 0.74" width="512" height="3072"/>
+    <texture name="floor" type="2d" builtin="checker" rgb1="0.20 0.25 0.30" rgb2="0.25 0.30 0.34" width="512" height="512"/>
+    <material name="floor_mat" texture="floor" texrepeat="12 12" reflectance="0.05"/>
+  </asset>
+  <worldbody>
+    <light pos="-1 -3 5" dir="0.2 0.4 -1" castshadow="true"/>
+    <geom name="floor" type="plane" size="15 15 0.1" material="floor_mat" friction="0.85 0.01 0.001"/>
+    <camera name="overview" pos="2.5 -3.2 2" xyaxes="0.788 0.615 0 -0.275 0.353 0.895"/>
+    <camera name="side" pos="0 -3.5 0.9" xyaxes="1 0 0 0 0.2 0.98"/>
+    <body name="torso" pos="0 0 0.405">
+      <freejoint name="root"/>
+      <geom name="torso_shell" type="box" size="0.28 0.13 0.07" mass="6" rgba="0.95 0.56 0.13 1"/>
+      <geom name="head" type="box" pos="0.33 0 0.035" size="0.06 0.09 0.05" mass="0.15" rgba="0.18 0.25 0.33 1"/>
+      <geom name="eye_left" type="sphere" pos="0.39 0.05 0.05" size="0.015" mass="0.001" contype="0" conaffinity="0" rgba="0.2 0.9 1 1"/>
+      <geom name="eye_right" type="sphere" pos="0.39 -0.05 0.05" size="0.015" mass="0.001" contype="0" conaffinity="0" rgba="0.2 0.9 1 1"/>
+      <site name="imu" size="0.008"/>
+      <camera name="chase" mode="trackcom" pos="-1.6 -1.7 1.05" xyaxes="0.728 -0.685 0 0.27 0.288 0.919"/>
+      <body name="payload" pos="0 0 0.105">
+        <joint name="payload_slide" type="slide" axis="0 1 0" range="-0.32 0.32" damping="8" armature="0.001" stiffness="1000" springref="0"/>
+        <geom name="payload_box" type="box" size="0.11 0.075 0.045" mass="1.2" rgba="0.37 0.65 0.9 1" contype="0" conaffinity="0"/>
+      </body>
+      <body name="FL_hip" pos="0.255 0.155 0">
+        <joint name="FL_abduction" axis="1 0 0" range="-0.8 0.8"/>
+        <geom type="sphere" size="0.038" mass="0.10" rgba="0.14 0.18 0.23 1" contype="0" conaffinity="0"/>
+        <body name="FL_upper">
+          <joint name="FL_hip_pitch" axis="0 1 0" range="-1.3 1.5"/>
+          <geom class="limb" name="FL_thigh" fromto="0 0 0 0 0 -0.22" mass="0.28"/>
+          <body name="FL_lower" pos="0 0 -0.22">
+            <joint name="FL_knee" axis="0 1 0" range="-2.7 -0.15"/>
+            <geom class="limb" name="FL_shin" fromto="0 0 0 0 0 -0.22" mass="0.18"/>
+            <geom name="FL_foot" type="sphere" pos="0 0 -0.22" size="0.034" mass="0.06" priority="1" friction="0.9 0.01 0.001" rgba="0.07 0.08 0.1 1"/>
+            <site name="FL_toe" pos="0 0 -0.22" size="0.009" rgba="0.4 1 0.4 1"/>
+          </body>
+        </body>
+      </body>
+      <body name="FR_hip" pos="0.255 -0.155 0">
+        <joint name="FR_abduction" axis="1 0 0" range="-0.8 0.8"/>
+        <geom type="sphere" size="0.038" mass="0.10" rgba="0.14 0.18 0.23 1" contype="0" conaffinity="0"/>
+        <body name="FR_upper">
+          <joint name="FR_hip_pitch" axis="0 1 0" range="-1.3 1.5"/>
+          <geom class="limb" name="FR_thigh" fromto="0 0 0 0 0 -0.22" mass="0.28"/>
+          <body name="FR_lower" pos="0 0 -0.22">
+            <joint name="FR_knee" axis="0 1 0" range="-2.7 -0.15"/>
+            <geom class="limb" name="FR_shin" fromto="0 0 0 0 0 -0.22" mass="0.18"/>
+            <geom name="FR_foot" type="sphere" pos="0 0 -0.22" size="0.034" mass="0.06" priority="1" friction="0.9 0.01 0.001" rgba="0.07 0.08 0.1 1"/>
+            <site name="FR_toe" pos="0 0 -0.22" size="0.009" rgba="0.4 1 0.4 1"/>
+          </body>
+        </body>
+      </body>
+      <body name="RL_hip" pos="-0.255 0.155 0">
+        <joint name="RL_abduction" axis="1 0 0" range="-0.8 0.8"/>
+        <geom type="sphere" size="0.038" mass="0.10" rgba="0.14 0.18 0.23 1" contype="0" conaffinity="0"/>
+        <body name="RL_upper">
+          <joint name="RL_hip_pitch" axis="0 1 0" range="-1.3 1.5"/>
+          <geom class="limb" name="RL_thigh" fromto="0 0 0 0 0 -0.22" mass="0.28"/>
+          <body name="RL_lower" pos="0 0 -0.22">
+            <joint name="RL_knee" axis="0 1 0" range="-2.7 -0.15"/>
+            <geom class="limb" name="RL_shin" fromto="0 0 0 0 0 -0.22" mass="0.18"/>
+            <geom name="RL_foot" type="sphere" pos="0 0 -0.22" size="0.034" mass="0.06" priority="1" friction="0.9 0.01 0.001" rgba="0.07 0.08 0.1 1"/>
+            <site name="RL_toe" pos="0 0 -0.22" size="0.009" rgba="0.4 1 0.4 1"/>
+          </body>
+        </body>
+      </body>
+      <body name="RR_hip" pos="-0.255 -0.155 0">
+        <joint name="RR_abduction" axis="1 0 0" range="-0.8 0.8"/>
+        <geom type="sphere" size="0.038" mass="0.10" rgba="0.14 0.18 0.23 1" contype="0" conaffinity="0"/>
+        <body name="RR_upper">
+          <joint name="RR_hip_pitch" axis="0 1 0" range="-1.3 1.5"/>
+          <geom class="limb" name="RR_thigh" fromto="0 0 0 0 0 -0.22" mass="0.28"/>
+          <body name="RR_lower" pos="0 0 -0.22">
+            <joint name="RR_knee" axis="0 1 0" range="-2.7 -0.15"/>
+            <geom class="limb" name="RR_shin" fromto="0 0 0 0 0 -0.22" mass="0.18"/>
+            <geom name="RR_foot" type="sphere" pos="0 0 -0.22" size="0.034" mass="0.06" priority="1" friction="0.9 0.01 0.001" rgba="0.07 0.08 0.1 1"/>
+            <site name="RR_toe" pos="0 0 -0.22" size="0.009" rgba="0.4 1 0.4 1"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <contact>
+    <exclude body1="torso" body2="FL_upper"/>
+    <exclude body1="torso" body2="FR_upper"/>
+    <exclude body1="torso" body2="RL_upper"/>
+    <exclude body1="torso" body2="RR_upper"/>
+  </contact>
+  <actuator>
+    <motor name="FL_abduction_motor" joint="FL_abduction"/>
+    <motor name="FL_hip_pitch_motor" joint="FL_hip_pitch"/>
+    <motor name="FL_knee_motor" joint="FL_knee"/>
+    <motor name="FR_abduction_motor" joint="FR_abduction"/>
+    <motor name="FR_hip_pitch_motor" joint="FR_hip_pitch"/>
+    <motor name="FR_knee_motor" joint="FR_knee"/>
+    <motor name="RL_abduction_motor" joint="RL_abduction"/>
+    <motor name="RL_hip_pitch_motor" joint="RL_hip_pitch"/>
+    <motor name="RL_knee_motor" joint="RL_knee"/>
+    <motor name="RR_abduction_motor" joint="RR_abduction"/>
+    <motor name="RR_hip_pitch_motor" joint="RR_hip_pitch"/>
+    <motor name="RR_knee_motor" joint="RR_knee"/>
+  </actuator>
+  <sensor>
+    <accelerometer name="accelerometer" site="imu"/>
+    <gyro name="gyroscope" site="imu"/>
+  </sensor>
+</mujoco>

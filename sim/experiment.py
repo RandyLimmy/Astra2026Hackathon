@@ -2,9 +2,6 @@
 
 from dataclasses import dataclass
 from types import ModuleType
-import math
-
-from contracts import ExperimentConfig
 from .bridge import DRIVE_FORCE_N, MASS_KG, Mechanics, STOP_SPEED_MPS
 
 

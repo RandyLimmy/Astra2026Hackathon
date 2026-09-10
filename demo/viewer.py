@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-import threading
+from queue import Empty, SimpleQueue
 import time
 from xml.sax.saxutils import escape
 
 import mujoco
 import numpy as np
+
+from simulator.view_controls import ViewControls
 
 
 _LANES = (("candidate", -3.0, "0.18 0.49 0.95 1"),
@@ -134,11 +136,13 @@ def _summary(label: str, run: dict) -> str:
 
 
 def show_comparison(candidate: dict, reference: dict, *, wall_distance_m: float,
-                    title: str = "Synthetic braking replay", duration_s: float | None = None) -> None:
-    """Replay recorded probe trajectories, repeating with a pause at the end.
+                    title: str = "Synthetic braking replay", duration_s: float | None = None,
+                    speedup: float = 1., autoplay: bool = False) -> None:
+    """Replay recorded probe trajectories in one window, initially paused.
 
-    Space pauses/resumes, R restarts, and closing the native window exits. An
-    optional wall-clock duration makes unattended smoke checks terminate.
+    Space starts, pauses, resumes, or replays after completion. R/N restart and
+    play; C cycles cameras, +/- changes playback speed, and Escape closes.
+    Autoplay starts immediately. An optional wall-clock duration bounds smoke checks.
     """
     import mujoco.viewer
 
@@ -146,16 +150,13 @@ def show_comparison(candidate: dict, reference: dict, *, wall_distance_m: float,
         raise ValueError("duration_s must be finite and positive.")
     samples = (_samples(candidate), _samples(reference))
     model, data, camera = _scene(*samples, wall_distance_m, title)
+    controls = ViewControls(model, scenario="recorded_car", speedup=speedup,
+                            camera="free", distance=camera.distance)
     end_time = max(float(rows[-1, 0]) for rows in samples)
-    controls = {"paused": False, "restart": False}
-    controls_lock = threading.Lock()
+    keys: SimpleQueue[int] = SimpleQueue()
 
     def on_key(keycode: int) -> None:
-        with controls_lock:
-            if keycode == ord(" "):
-                controls["paused"] = not controls["paused"]
-            elif keycode in (ord("R"), ord("r")):
-                controls["restart"] = True
+        keys.put(keycode)
 
     _place(model, data, samples, 0)
     with mujoco.viewer.launch_passive(
@@ -168,35 +169,57 @@ def show_comparison(candidate: dict, reference: dict, *, wall_distance_m: float,
             viewer.cam.distance = camera.distance
         started = previous = time.monotonic()
         elapsed = 0.0
+        paused = not autoplay
         while viewer.is_running():
             now = time.monotonic()
             if duration_s is not None and now - started >= duration_s:
                 break
-            with controls_lock:
-                paused = controls["paused"]
-                restart = controls["restart"]
-                controls["restart"] = False
-            if restart:
-                elapsed = 0.0
-            elif not paused:
-                elapsed += now - previous
+            restart = close = False
+            while True:
+                try:
+                    key = keys.get_nowait()
+                except Empty:
+                    break
+                if controls.handle_key(key, viewer, camera.lookat):
+                    continue
+                if key == ord(" "):
+                    if elapsed >= end_time:
+                        elapsed = 0.0
+                        paused = False
+                        restart = True
+                    else:
+                        paused = not paused
+                elif key in (ord("R"), ord("r"), ord("N"), ord("n")):
+                    elapsed = 0.0
+                    paused = False
+                    restart = True
+                elif key == 256:
+                    close = True
+            if close:
+                break
+            if not paused and not restart:
+                elapsed = min(end_time, elapsed + (now - previous) * controls.speedup)
             previous = now
-            cycle_time = elapsed % (end_time + 2.5)
-            probe_time = min(cycle_time, end_time)
+            if elapsed >= end_time:
+                paused = True
+            probe_time = elapsed
             with viewer.lock():
                 speeds = _place(model, data, samples, probe_time)
-            state = "Paused" if paused else ("Replay complete; repeating shortly" if cycle_time > end_time else "Replaying")
+            state = "Replay complete" if elapsed >= end_time else "Paused" if paused else "Replaying"
             viewer.set_texts([
-                (None, mujoco.mjtGridPos.mjGRID_TOPLEFT,
+                (mujoco.mjtFont.mjFONT_SHADOW, mujoco.mjtGridPos.mjGRID_TOPLEFT,
                  f"{title}\nRecorded synthetic trajectories | probe t = {probe_time:.2f} s\n"
                  + _summary("BLUE / original candidate", candidate) + "\n"
-                 + _summary("CORAL / synthetic reference", reference), None),
-                (None, mujoco.mjtGridPos.mjGRID_BOTTOMLEFT,
-                 f"{state} | Space: pause/resume | R: restart\n"
+                 + _summary("CORAL / synthetic reference", reference), ""),
+                (mujoco.mjtFont.mjFONT_SHADOW, mujoco.mjtGridPos.mjGRID_TOPRIGHT,
+                 f"{controls.speedup:g}x playback | {controls.camera} camera\n"
+                 "C: cycle camera | - / +: playback speed", ""),
+                (mujoco.mjtFont.mjFONT_SHADOW, mujoco.mjtGridPos.mjGRID_BOTTOMLEFT,
+                 f"{state} | Space: start/pause/resume/replay | R/N: restart and play | Esc: close\n"
                  f"Barrier = {wall_distance_m:.2f} m; crossing uses the vehicle center.\n"
-                 "Visual barrier only; contact does not alter the recorded motion.", None),
-                (None, mujoco.mjtGridPos.mjGRID_BOTTOMRIGHT,
-                 f"BLUE speed: {speeds[0]:.2f} m/s\nCORAL speed: {speeds[1]:.2f} m/s", None),
+                 "Visual barrier only; contact does not alter the recorded motion.", ""),
+                (mujoco.mjtFont.mjFONT_SHADOW, mujoco.mjtGridPos.mjGRID_BOTTOMRIGHT,
+                 f"BLUE speed: {speeds[0]:.2f} m/s\nCORAL speed: {speeds[1]:.2f} m/s", ""),
             ])
             viewer.sync()
             time.sleep(1 / 60)

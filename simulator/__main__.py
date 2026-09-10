@@ -18,6 +18,9 @@ from .model import model_xml
 from .recording import Recorder
 from .runner import BRAKE_TORQUES, Simulator
 from . import scenarios
+from .view_controls import ViewControls, setting_overrides, viewer_arguments
+from .platforms import catalog as platforms
+from .platforms import operator as platform_operator
 
 
 def _physics_arguments(parser):
@@ -35,12 +38,17 @@ def _physics_arguments(parser):
         parser.add_argument(f"--{flag}", dest=destination, type=float, help=help_text)
     parser.add_argument("--cycles", dest="warmup_cycles", type=int, help="conditioning cycles")
     parser.add_argument("--no-wall", action="store_true", help="measure an uncensored free stop")
+    parser.add_argument("--probe", help="platform diagnostic probe (see platform documentation)")
+    parser.add_argument("--fault-at", type=float, help="platform fault onset / impact arming time in seconds")
+    parser.add_argument("--set", dest="settings", action="append", metavar="NAME=VALUE",
+                        help="override a model setting (JSON values or unquoted text); repeat as needed")
 
 
 def _parser():
     parser = argparse.ArgumentParser(prog="python -m simulator", description=__doc__)
     commands = parser.add_subparsers(dest="action", required=True)
     commands.add_parser("list", help="list available private operator scenarios")
+    commands.add_parser("demos", help="show the four presentation demos and launch commands")
     run = commands.add_parser("run", help="run deterministically and record public/private artifacts")
     _physics_arguments(run)
     run.add_argument("--output", type=Path, help="new recording directory (default: runs/<unique name>)")
@@ -48,7 +56,7 @@ def _parser():
     run.add_argument("--camera", default="overview", help="model camera: overview, side, or chase")
     run.add_argument("--fps", type=int, default=30, help="frame sample rate (default: 30)")
     run.add_argument("--counterfactual", action="store_true", help="also record a private wall-free replay")
-    compare = commands.add_parser("compare", help="run an isolated Python model and the reference on shared car mechanics")
+    compare = commands.add_parser("compare", help="compare car components or nominal and damaged platform probes")
     _physics_arguments(compare)
     compare.add_argument("--candidate", type=Path, help="editable wheel_v2 Python component")
     compare.add_argument("--developer-check", action="store_true", help="include a manually authored stateful check")
@@ -59,14 +67,20 @@ def _parser():
     view = commands.add_parser("view", help="open the live MuJoCo viewer (macOS: use mjpython)")
     _physics_arguments(view)
     view.add_argument("--speedup", type=float, default=1.0, help="playback speed multiplier (default: 1)")
+    viewer_arguments(view)
     export = commands.add_parser("export-baseline", help="export nominal MJCF and public sensor contract")
     export.add_argument("output", type=Path)
     task = commands.add_parser("export-task", help="export editable Python and neutral wheel_v2 interface only")
     task.add_argument("output", type=Path)
+    platform_export = commands.add_parser("export-platform", help="export healthy platform MJCF and sensor example")
+    platform_export.add_argument("scenario")
+    platform_export.add_argument("output", type=Path)
     return parser
 
 
 def _config(args):
+    if args.probe is not None or args.fault_at is not None:
+        raise ValueError("--probe and --fault-at apply to car-damage, quadruped, drone and warehouse platforms")
     values = scenarios.load(args.scenario).to_dict()
     if args.config:
         overlay = json.loads(args.config.read_text())
@@ -77,6 +91,7 @@ def _config(args):
         if not isinstance(overlay, dict):
             raise ValueError("the config field must contain a JSON object")
         values.update(overlay)
+    values.update(setting_overrides(getattr(args, "settings", None)))
     for name in ("initial_speed", "brake", "brake_at", "duration", "wall_x", "timestep",
                  "recovery", "warmup_cycles"):
         value = getattr(args, name)
@@ -109,6 +124,8 @@ def _outcome(summary):
 
 
 def _run(args):
+    if platforms.is_platform(args.scenario):
+        return platform_operator.run(args)
     config = _config(args)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     output = args.output or Path("runs") / f"{args.scenario}-{stamp}-{uuid4().hex[:8]}"
@@ -123,6 +140,10 @@ def _run(args):
 
 
 def _compare(args):
+    if platforms.is_platform(args.scenario):
+        if args.candidate is not None or args.developer_check:
+            raise ValueError("--candidate and --developer-check apply to the car wheel-actuator comparison")
+        return platform_operator.compare(args)
     from .comparison import DEFAULT_CANDIDATE, compare
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     output = args.output or Path("runs") / f"comparison-{args.scenario}-{stamp}-{uuid4().hex[:8]}"
@@ -136,6 +157,8 @@ def _compare(args):
 
 
 def _view(args):
+    if platforms.is_platform(args.scenario):
+        return platform_operator.view(args)
     # Importing the viewer here leaves headless run/export paths independent of GLFW.
     import mujoco.viewer
 
@@ -144,74 +167,85 @@ def _view(args):
     if sys.platform == "darwin" and not getattr(mujoco.viewer, "_MJPYTHON", None):
         raise ValueError("On macOS launch with .venv/bin/mjpython -m simulator view " + args.scenario)
     config = _config(args)
-    print("Space: pause/resume | R: repeat trial retaining heat/faults | "
-          "N: reset and replay full experiment | Esc: close", flush=True)
-    while True:
-        sim = Simulator(config)
-        print("Preparing declared conditioning and recovery history...", flush=True)
-        sim.prepare()
-        print(f"Conditioning complete ({sim.elapsed:.2f} simulated seconds). Starting trial.", flush=True)
-        keys = SimpleQueue()
-        restart = False
-        with mujoco.viewer.launch_passive(sim.model, sim.data, key_callback=keys.put) as viewer:
-            with viewer.lock():
-                viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-                viewer.cam.distance = 10
-                viewer.cam.azimuth = 135
-                viewer.cam.elevation = -25
-                viewer.cam.lookat[:] = sim.data.xpos[sim.chassis]
-            paused = False
-            finished = False
-            stop_ticks = 0
-            last_sync = 0.0
-            next_step = time.monotonic()
-            while viewer.is_running():
-                while True:
-                    try:
-                        key = keys.get_nowait()
-                    except Empty:
-                        break
-                    if key == 32:
-                        paused = not paused
-                        next_step = time.monotonic()
-                    elif key in (ord("R"), ord("r")):
+    print("Space: play/pause/replay | R: repeat retaining heat/faults | "
+          "N: full replay | Esc: close", flush=True)
+    sim = Simulator(config)
+    presentation = ViewControls(sim.model, scenario=args.scenario, config=config, speedup=args.speedup,
+                                camera=getattr(args, "camera", None) or "chase", distance=10)
+    print("Preparing declared conditioning and recovery history...", flush=True)
+    sim.prepare()
+    print(f"Ready after {sim.elapsed:.2f} simulated seconds of preparation. "
+          "Press Space in the viewer to play.", flush=True)
+    keys = SimpleQueue()
+    native_ui = getattr(args, "native_ui", False)
+    with mujoco.viewer.launch_passive(sim.model, sim.data, key_callback=keys.put,
+                                     show_left_ui=native_ui, show_right_ui=native_ui) as viewer:
+        with viewer.lock():
+            presentation.apply_camera(viewer, sim.data.xpos[sim.chassis])
+        paused = not getattr(args, "autoplay", False)
+        finished = False
+        stop_ticks = 0
+        last_sync = 0.0
+        next_step = time.monotonic()
+        while viewer.is_running():
+            while True:
+                try:
+                    key = keys.get_nowait()
+                except Empty:
+                    break
+                if key == 32:
+                    if finished:
+                        print("Replaying the full experiment and its declared preparation...", flush=True)
                         with viewer.lock():
-                            sim.reset_trial()
+                            sim.reset_replay()
                         paused = finished = False
                         stop_ticks = 0
-                        next_step = time.monotonic()
-                        print("Trial reset; temperature and completed faults retained.", flush=True)
-                    elif key in (ord("N"), ord("n")):
-                        restart = True
-                    elif key == 256:
-                        viewer.close()
-                if restart or not viewer.is_running():
-                    break
-                now = time.monotonic()
-                if not paused and not finished and now >= next_step:
+                    else:
+                        paused = not paused
+                        print("Paused. Space resumes." if paused else "Playing scenario.", flush=True)
+                    next_step = time.monotonic()
+                elif key in (ord("R"), ord("r"), ord("N"), ord("n")):
                     with viewer.lock():
+                        if key in (ord("R"), ord("r")):
+                            sim.reset_trial()
+                        else:
+                            sim.reset_replay()
+                    paused = finished = False
+                    stop_ticks = 0
+                    next_step = time.monotonic()
+                elif key == 256:
+                    viewer.close()
+                    break
+                elif presentation.handle_key(key, viewer, sim.data.xpos[sim.chassis]):
+                    next_step = time.monotonic()
+            if not viewer.is_running():
+                break
+            now = time.monotonic()
+            if not paused and not finished and now >= next_step:
+                with viewer.lock():
+                    # Catch up between display frames without starving input.
+                    for _ in range(64):
+                        if finished or now < next_step:
+                            break
                         throttle, brake = sim.command()
                         sim.step(throttle, brake)
-                    stop_ticks = stop_ticks + 1 if sim.speed < 0.1 else 0
-                    finished = sim.trial_complete(stop_ticks)
-                    next_step += config.timestep / args.speedup
-                    # Avoid an unbounded catch-up burst after a user/window stall.
-                    if now - next_step > 0.25:
-                        next_step = now
-                    if finished:
-                        label = "wall contact" if sim.collision else "stopped" if sim.speed < 0.1 else "timeout"
-                        print(f"Trial complete: {label}; R repeats, N starts a full reset.", flush=True)
-                if now - last_sync >= 1 / 60:
-                    with viewer.lock():
-                        viewer.cam.lookat[:] = sim.data.xpos[sim.chassis]
-                    viewer.sync()
-                    last_sync = now
-                if paused or finished:
-                    time.sleep(0.01)
-                else:
-                    time.sleep(max(0, min(next_step - time.monotonic(), 0.01)))
-        if not restart:
-            return
+                        stop_ticks = stop_ticks + 1 if sim.speed < 0.1 else 0
+                        finished = sim.trial_complete(stop_ticks)
+                        next_step += config.timestep / presentation.speedup
+                # Avoid an unbounded catch-up burst after a user/window stall.
+                if now - next_step > 0.25:
+                    next_step = now
+                if finished:
+                    label = "wall contact" if sim.collision else "stopped" if sim.speed < 0.1 else "timeout"
+                    print(f"Trial complete: {label}; Space or N replays fully; R retains faults.", flush=True)
+            if now - last_sync >= 1 / 60:
+                phase = "wall contact" if sim.collision else "braking" if sim.last_command[1] else "approach"
+                presentation.update(viewer, position=sim.data.xpos[sim.chassis], elapsed=sim.trial_time,
+                                    duration=config.duration, phase=phase, paused=paused, finished=finished,
+                                    detail=f"Speed: {sim.speed:.2f} m/s\nWheel/road contact physics")
+                viewer.sync()
+                last_sync = time.monotonic()
+            time.sleep(.01 if paused or finished else max(0, min(next_step - time.monotonic(), .01)))
 
 
 def _schema():
@@ -277,9 +311,18 @@ def main(argv=None):
     parser = _parser()
     args = parser.parse_args(argv)
     try:
-        if args.action == "list":
+        if args.action == "demos":
+            descriptions = platforms.entries()
+            for name in ("drone_demo", "car_demo", "quadruped_demo", "warehouse_demo"):
+                print(f"{name}: {descriptions[name]}")
+                print(f"  .venv/bin/mjpython -m simulator view {name}")
+            print("Space plays the full scenario; C changes camera; -/+ changes playback speed.")
+            print("Use --set NAME=VALUE for model settings; see simulator/DEMO_GUIDE.md.")
+        elif args.action == "list":
             for name in scenarios.names():
                 print(f"{name:16} {scenarios.description(name)}")
+            for name, description in platforms.entries().items():
+                print(f"{name:28} {description}")
         elif args.action == "run":
             _run(args)
         elif args.action == "compare":
@@ -292,6 +335,8 @@ def main(argv=None):
             from .comparison import export_task
             export_task(args.output)
             print(f"Editable component package: {args.output.resolve()}")
+        elif args.action == "export-platform":
+            platform_operator.export(args)
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         parser.exit(2, f"error: {error}\n")
     except KeyboardInterrupt:

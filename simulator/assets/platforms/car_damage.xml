@@ -1,0 +1,112 @@
+<mujoco model="RealityPatch post-crash inspection car">
+  <compiler angle="radian"/>
+  <option timestep="0.002" integrator="implicitfast" cone="elliptic" iterations="80"/>
+  <visual><global offwidth="1280" offheight="720"/><quality shadowsize="2048"/><map zfar="500"/>
+    <headlight ambient="0.6 0.6 0.6" diffuse="0.8 0.8 0.8"/>
+  </visual>
+  <default>
+    <geom friction="1.0 0.005 0.0001" solref="0.008 1" solimp="0.95 0.99 0.001"/>
+    <joint armature="0.01"/>
+    <default class="visual"><geom contype="0" conaffinity="0" mass="0"/></default>
+    <default class="tire"><geom type="ellipsoid" size="0.34 0.115 0.34" mass="22" rgba="0.055 0.065 0.08 1" priority="2" friction="1.1 0.005 0.0001"/></default>
+  </default>
+  <asset>
+    <texture name="sky" type="skybox" builtin="gradient" rgb1="0.13 0.19 0.29" rgb2="0.55 0.65 0.73" width="512" height="3072"/>
+    <texture name="ground" type="2d" builtin="checker" rgb1="0.18 0.22 0.26" rgb2="0.21 0.25 0.29" width="512" height="512"/>
+    <material name="groundmat" texture="ground" texrepeat="35 25" reflectance="0.1"/>
+  </asset>
+  <worldbody>
+    <light pos="0 -10 20" dir="0 0 -1" diffuse="0.9 0.9 0.9"/>
+    <light pos="20 12 15" dir="-1 -1 -2" diffuse="0.5 0.6 0.7"/>
+    <geom name="ground" type="plane" size="150 100 0.1" material="groundmat"/>
+    <geom name="impact_barrier" type="box" pos="9 0 0.9" size="0.35 2.6 0.9" rgba="0.95 0.35 0.14 1"/>
+    <geom name="barrier_stripe" class="visual" type="box" pos="8.62 0 1.1" size="0.01 2.6 0.12" rgba="1 0.9 0.48 1"/>
+    <geom name="inspection_lane" class="visual" type="box" pos="25 -12 0.004" size="38 4.5 0.004" rgba="0.14 0.18 0.23 1"/>
+    <geom class="visual" type="box" pos="25 -16.5 0.01" size="38 0.035 0.006" rgba="0.3 0.85 0.9 1"/>
+    <geom class="visual" type="box" pos="25 -7.5 0.01" size="38 0.035 0.006" rgba="0.3 0.85 0.9 1"/>
+    <geom name="probe_bump" type="box" pos="9 -11.02 0.045" size="0.32 0.38 0.045" rgba="0.95 0.72 0.25 1"/>
+    <camera name="overview" pos="15 -35 24" xyaxes="1 0 0 0 0.72 0.69" fovy="65"/>
+    <camera name="side" pos="14 -31 7" xyaxes="1 0 0 0 0.27 0.96" fovy="65"/>
+    <body name="chassis" pos="0 0 0.5">
+      <freejoint name="chassis_free"/>
+      <inertial pos="0 0 0" mass="1050" diaginertia="270 1300 1500"/>
+      <geom name="chassis_geom" type="box" size="1.95 0.78 0.18" rgba="0.1 0.65 0.77 1"/>
+      <geom class="visual" type="box" pos="-0.25 0 0.31" size="0.86 0.65 0.19" rgba="0.12 0.20 0.28 1"/>
+      <geom class="visual" type="box" pos="1.95 0.51 0" size="0.045 0.18 0.06" rgba="1 0.95 0.6 1"/>
+      <geom class="visual" type="box" pos="1.95 -0.51 0" size="0.045 0.18 0.06" rgba="1 0.95 0.6 1"/>
+      <site name="imu" pos="0 0 0"/>
+      <camera name="chase" mode="track" pos="-8 -8 5" xyaxes="0.7 -0.7 0 0.33 0.33 0.88" fovy="58"/>
+      <body name="suspension_FL" pos="1.3 0.98 -0.23">
+        <joint name="suspension_FL" type="slide" axis="0 0 1" range="-0.10 0.22" stiffness="40000" damping="2200"/>
+        <inertial pos="0 0 0" mass="5" diaginertia="0.04 0.04 0.04"/>
+        <geom class="visual" type="capsule" fromto="0 0 0 0 0 0.22" size="0.035" rgba="0.9 0.75 0.22 1"/>
+        <body name="knuckle_FL">
+          <joint name="steer_FL" axis="0 0 1" range="-0.65 0.65" damping="100" armature="1"/>
+          <inertial pos="0 0 0" mass="3" diaginertia="0.03 0.03 0.03"/>
+          <body name="toe_FL">
+            <body name="wheel_FL">
+              <joint name="spin_FL" axis="0 1 0" damping="0.3" armature="0.1"/>
+              <geom name="tire_FL" class="tire"/>
+              <geom class="visual" type="box" size="0.23 0.12 0.023" rgba="0.8 0.85 0.89 1"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="suspension_FR" pos="1.3 -0.98 -0.23">
+        <joint name="suspension_FR" type="slide" axis="0 0 1" range="-0.10 0.22" stiffness="40000" damping="2200"/>
+        <inertial pos="0 0 0" mass="5" diaginertia="0.04 0.04 0.04"/>
+        <geom class="visual" type="capsule" fromto="0 0 0 0 0 0.22" size="0.035" rgba="0.9 0.75 0.22 1"/>
+        <body name="knuckle_FR">
+          <joint name="steer_FR" axis="0 0 1" range="-0.65 0.65" damping="100" armature="1"/>
+          <inertial pos="0 0 0" mass="3" diaginertia="0.03 0.03 0.03"/>
+          <body name="toe_FR">
+            <body name="wheel_FR">
+              <joint name="spin_FR" axis="0 1 0" damping="0.3" armature="0.1"/>
+              <geom name="tire_FR" class="tire"/>
+              <geom class="visual" type="box" size="0.23 0.12 0.023" rgba="0.8 0.85 0.89 1"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="suspension_RL" pos="-1.3 0.98 -0.23">
+        <joint name="suspension_RL" type="slide" axis="0 0 1" range="-0.10 0.22" stiffness="40000" damping="2200"/>
+        <inertial pos="0 0 0" mass="5" diaginertia="0.04 0.04 0.04"/>
+        <geom class="visual" type="capsule" fromto="0 0 0 0 0 0.22" size="0.035" rgba="0.9 0.75 0.22 1"/>
+        <body name="knuckle_RL">
+          <inertial pos="0 0 0" mass="3" diaginertia="0.03 0.03 0.03"/>
+          <body name="toe_RL">
+            <body name="wheel_RL">
+              <joint name="spin_RL" axis="0 1 0" damping="0.3" armature="0.1"/>
+              <geom name="tire_RL" class="tire"/>
+              <geom class="visual" type="box" size="0.23 0.12 0.023" rgba="0.8 0.85 0.89 1"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="suspension_RR" pos="-1.3 -0.98 -0.23">
+        <joint name="suspension_RR" type="slide" axis="0 0 1" range="-0.10 0.22" stiffness="40000" damping="2200"/>
+        <inertial pos="0 0 0" mass="5" diaginertia="0.04 0.04 0.04"/>
+        <geom class="visual" type="capsule" fromto="0 0 0 0 0 0.22" size="0.035" rgba="0.9 0.75 0.22 1"/>
+        <body name="knuckle_RR">
+          <inertial pos="0 0 0" mass="3" diaginertia="0.03 0.03 0.03"/>
+          <body name="toe_RR">
+            <body name="wheel_RR">
+              <joint name="spin_RR" axis="0 1 0" damping="0.3" armature="0.1"/>
+              <geom name="tire_RR" class="tire"/>
+              <geom class="visual" type="box" size="0.23 0.12 0.023" rgba="0.8 0.85 0.89 1"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position name="rack_FL" joint="steer_FL" kp="18000" kv="400" ctrlrange="-0.65 0.65" forcerange="-6000 6000"/>
+    <position name="rack_FR" joint="steer_FR" kp="18000" kv="400" ctrlrange="-0.65 0.65" forcerange="-6000 6000"/>
+    <motor name="drive_FL" joint="spin_FL" ctrlrange="-1000 1000"/>
+    <motor name="drive_FR" joint="spin_FR" ctrlrange="-1000 1000"/>
+    <motor name="drive_RL" joint="spin_RL" ctrlrange="-1000 1000"/>
+    <motor name="drive_RR" joint="spin_RR" ctrlrange="-1000 1000"/>
+  </actuator>
+  <sensor><accelerometer name="acceleration" site="imu"/><gyro name="angular_velocity" site="imu"/></sensor>
+</mujoco>
