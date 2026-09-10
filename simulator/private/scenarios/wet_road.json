@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "description": "Low-friction road from 40 to 120 metres.",
+  "config": {
+    "wet_friction": 0.32
+  }
+}

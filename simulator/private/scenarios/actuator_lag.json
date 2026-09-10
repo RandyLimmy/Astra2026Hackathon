@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "description": "Brake torque follows a first-order response with a 0.25 second time constant.",
+  "config": {
+    "lag": 0.25
+  }
+}

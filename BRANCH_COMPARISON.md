@@ -1,5 +1,11 @@
 # Comparing the two simulator branches
 
+**Integration update:** the branches are now combined. The car executes the
+isolated `wheel_v2` Python component, replays an exact public preparation timeline,
+and saves candidate predictions before running the reference trial. The
+scheduled-fault completion bug below is fixed. See [README.md](README.md) for
+current commands. The remainder records the pre-integration review and rationale.
+
 Reviewed on September 10, 2026:
 
 - `origin/main`: `4fce806` — the teammate's car/scenario simulator.

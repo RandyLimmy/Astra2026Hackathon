@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import ctypes
+import hashlib
 import math
 import os
 from pathlib import Path
@@ -95,6 +96,13 @@ def _check_state(state: object) -> dict:
     return state
 
 
+def _vector4(values: object, label: str, *, lower: float | None = None,
+             upper: float = 1e9) -> list[float]:
+    if not isinstance(values, (list, tuple)) or len(values) != 4:
+        raise WorkerError(f"{label} must contain exactly four numbers.")
+    return [_finite(value, label, lower=lower, upper=upper) for value in values]
+
+
 def _profile(workspace: Path, executable: Path) -> str:
     """Allow Python itself and stdlib; exclude every site-packages directory."""
     stdlib = Path(sysconfig.get_path("stdlib")).resolve()
@@ -128,6 +136,8 @@ class ActuatorWorker:
     possible between samples. Any protocol failure terminates the child.
     """
 
+    _protocol = "scalar_v1"
+
     def __init__(self, source_path: Path, timeout_s: float = 2.0, sandbox: bool = True):
         self.timeout_s = _finite(timeout_s, "Request timeout", lower=0.01, upper=60)
         self._temporary = None
@@ -148,6 +158,7 @@ class ActuatorWorker:
         if len(source) > MAX_SOURCE_BYTES:
             raise WorkerError("Actuator source exceeds the permitted size.")
         self._source_line_count = max(1, source.count(b"\n") + 1)
+        self._source_sha256 = hashlib.sha256(source).hexdigest()
         try:
             self._temporary = tempfile.TemporaryDirectory(prefix="actuator-")
             workspace = Path(self._temporary.name).resolve()
@@ -187,6 +198,11 @@ class ActuatorWorker:
 
     def __enter__(self) -> "ActuatorWorker":
         return self
+
+    @property
+    def source_sha256(self) -> str:
+        """Hash of the exact bytes copied into this worker, even if source changes."""
+        return self._source_sha256
 
     def __exit__(self, *_: object) -> None:
         self.close()
@@ -243,7 +259,7 @@ class ActuatorWorker:
         if self._process is None:
             raise WorkerError("Actuator worker is closed.")
         self._sequence += 1
-        request = {"id": self._sequence, "operation": operation, **values}
+        request = {"id": self._sequence, "protocol": self._protocol, "operation": operation, **values}
         try:
             payload = json.dumps(request, allow_nan=False, separators=(",", ":")).encode() + b"\n"
             if len(payload) > MAX_MESSAGE_BYTES:
@@ -258,7 +274,9 @@ class ActuatorWorker:
                 safe_reasons = {
                     "invalid_state": "Actuator returned invalid numeric state.",
                     "invalid_force": "Actuator returned an invalid braking force.",
+                    "invalid_torque": "Actuator returned invalid wheel braking torque limits.",
                     "state_mutation": "compute_force must not modify actuator state; use advance_state.",
+                    "wheel_state_mutation": "compute_brake_torque_limits must not modify actuator state; use advance_state.",
                     "candidate_error": "Actuator computation failed.",
                     "runtime_error": "Actuator runtime rejected the request.",
                 }
@@ -269,7 +287,9 @@ class ActuatorWorker:
             value = result.get("value")
             if operation == "force":
                 return _finite(value, "Braking force", lower=0)
-            if operation in {"reset", "inspect", "advance"}:
+            if operation == "torque_limits" and self._protocol == "wheel_v2":
+                return _vector4(value, "Wheel torque limits", lower=0)
+            if operation in {"reset", "inspect", "advance"} or (operation == "reposition" and self._protocol == "wheel_v2"):
                 return _check_state(value)
             raise WorkerError("Unknown actuator operation.")
         except WorkerError:
@@ -317,3 +337,32 @@ class ActuatorWorker:
         if self._temporary is not None:
             self._temporary.cleanup()
             self._temporary = None
+
+
+class WheelActuatorWorker(ActuatorWorker):
+    """Version-two four-wheel component behind the same enforced OS boundary.
+
+    Wheel order is FL, FR, RL, RR. Limits are nonnegative Nm; solved torques
+    passed to advance are signed Nm. Angular velocities are signed rad/s.
+    Repositioning invokes the component's declared trial-reset intervention;
+    only reset() creates a fresh specimen with no accumulated state.
+    """
+
+    _protocol = "wheel_v2"
+
+    def torque_limits(self, brake: float, omega: list[float]) -> list[float]:
+        return self._request("torque_limits",
+                             brake=_finite(brake, "Brake command", lower=0, upper=1),
+                             omega=_vector4(omega, "Wheel angular velocity", upper=1e6))
+
+    def advance(self, brake: float, mean_omega: list[float], applied_torque: list[float], dt: float) -> None:
+        self._request("advance", brake=_finite(brake, "Brake command", lower=0, upper=1),
+                      omega=_vector4(mean_omega, "Mean wheel angular velocity", upper=1e6),
+                      applied_torque=_vector4(applied_torque, "Applied wheel braking torque"),
+                      dt=_finite(dt, "Timestep", lower=1e-9, upper=60))
+
+    def reposition(self) -> None:
+        self._request("reposition")
+
+    def force(self, brake: float, velocity: float) -> float:
+        raise WorkerError("Wheel actuator components use torque_limits.")

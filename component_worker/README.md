@@ -30,8 +30,17 @@ container or equivalent enforced backend. Keep scored investigation sessions
 separate from the builder's repository and conversation: this worker boundary
 does not by itself create that separate investigation environment.
 
+`WheelActuatorWorker` uses the same execution boundary for the version-two
+four-wheel contract in `contracts/WHEEL_ACTUATOR.md`. The initial JSON request
+selects `wheel_v2`; that protocol cannot change during a worker session. Inputs
+and outputs are validated as finite four-element numeric vectors on both sides.
+`torque_limits` returns nonnegative Nm capacities, while `advance` receives
+signed applied Nm torques and mean rad/s wheel speeds. `reposition` invokes the
+explicit trial-reset hook without replacing accumulated state. Both worker
+classes expose `source_sha256` for the exact source bytes copied at startup.
+
 Run the history, access-boundary, malformed-output and resource-budget checks:
 
 ```sh
-.venv/bin/python -m pytest tests/test_worker.py -q
+.venv/bin/python -m pytest tests/test_worker.py tests/test_wheel_worker.py -q
 ```

@@ -18,7 +18,7 @@ This approach best matches our intended **source-code extension** contribution. 
 
 The repair improves the prediction; it does not physically improve the brakes. On the final trial, show the original prediction, repaired prediction, and actual reference trajectory for the same commands. A later feature could use the improved model to recommend earlier braking.
 
-The first mechanics foundation is now implemented; see [README.md](README.md) for setup and run commands. It includes the MuJoCo braking scene, editable actuator, isolated macOS component worker, synthetic fade/reference controls, development parameter fitting, and native trajectory replay. The stateful solvability check is developer-written, not an Astra repair. The seven-tool API loop, final holdout lock/reveal, browser controls, and later scenarios remain to be built.
+The first mechanics foundation and the teammate's richer car simulator are now integrated; see [README.md](README.md) for setup and run commands. The four-wheel car executes an editable `wheel_v2` Python actuator in the isolated macOS worker. Candidate and reference replay the same public preparation commands/resets while evolving their own state; candidate predictions and source hashes are saved before the reference trial starts. Baseline, brake fade and recovery are the first comparison targets. Other reference scenarios are available, but repairs to mass, road contact or attachments still need additional component contracts. The original one-axis rig, development parameter fit and native replay remain available. The stateful solvability checks are developer-written, not Astra repairs. The seven-tool API loop, protected final holdout lock/reveal, browser controls and lateral disturbance remain to be built.
 
 This plan assumes two builders and uses a **five-hour working timebox**, not a confirmed event deadline. If there is more time, expand validation before adding another use case. Person 1 and Person 2 below are interchangeable role assignments based on your strengths.
 
@@ -426,6 +426,7 @@ Define a small scenario adapter only when adding the second use case: observatio
 - [ ] Person 2 obtains/configures the OpenAI API key and verifies model access with a small request.
 - [x] Person 1 installs MuJoCo and verifies that the Python actuator's force drives the minimal mechanical scene.
 - [x] Build and test the isolated component worker, synthetic history-dependent reference, development baseline fitting, and native replay.
+- [x] Connect the four-wheel car to the isolated Python actuator with exact public preparation replay and prediction-before-reference development records.
 - [ ] Commit the shared schema, one fake run artifact, and the dependency setup.
 - [ ] Agree the seven public tool contracts, eight-scenario stages, and separate agent/operator config schemas.
 - [ ] Verify that the investigation task package and candidate worker cannot access engine/reference internals, and that tool results contain only the neutral schema.

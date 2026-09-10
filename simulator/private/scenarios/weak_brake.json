@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "description": "Front-left brake retains 20 percent of its normal capacity.",
+  "config": {
+    "weak_wheel": "FL",
+    "brake_efficiency": 0.2
+  }
+}

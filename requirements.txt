@@ -1,0 +1,2 @@
+# One shared dependency lock for the car, component worker and evaluation tools.
+-r requirements-lock.txt

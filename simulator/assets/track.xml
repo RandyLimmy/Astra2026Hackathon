@@ -1,0 +1,6 @@
+<mujoco model="RealityPatch car and wall">
+  <include file="scene.xml"/>
+  <worldbody>
+    <geom name="wall" type="box" pos="100.5 0 1.5" size="0.5 6 1.5" rgba="0.75 0.24 0.15 1"/>
+  </worldbody>
+</mujoco>

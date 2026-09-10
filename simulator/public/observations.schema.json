@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "time",
+    "phase",
+    "phase_time",
+    "position",
+    "velocity",
+    "yaw",
+    "yaw_rate",
+    "wheel_speed",
+    "throttle",
+    "brake",
+    "front_x",
+    "wall_contact",
+    "lane_departure"
+  ],
+  "properties": {
+    "time": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Monotonic experiment time in seconds"
+    },
+    "phase": {
+      "type": "string",
+      "description": "conditioning_N, recovery, or trial"
+    },
+    "phase_time": {
+      "type": "number",
+      "minimum": 0
+    },
+    "position": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "World chassis position, metres"
+    },
+    "velocity": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "World translational velocity, m/s"
+    },
+    "yaw": {
+      "type": "number",
+      "description": "World yaw, radians"
+    },
+    "yaw_rate": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "World heading derivative, rad/s; null for vertical heading"
+    },
+    "wheel_speed": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 4,
+      "maxItems": 4,
+      "description": "FL, FR, RL, RR joint angular speeds, rad/s"
+    },
+    "throttle": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "brake": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "front_x": {
+      "type": "number",
+      "description": "Leading chassis collision-box x, metres"
+    },
+    "wall_contact": {
+      "type": "boolean"
+    },
+    "lane_departure": {
+      "type": "boolean"
+    }
+  }
+}

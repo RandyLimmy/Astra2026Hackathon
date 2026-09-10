@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "description": "A secured centered 300 kg load increases the vehicle mass.",
+  "config": {
+    "payload": 300
+  }
+}

@@ -1,0 +1,3 @@
+<mujoco model="RealityPatch wall-free track">
+  <include file="scene.xml"/>
+</mujoco>

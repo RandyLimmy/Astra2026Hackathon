@@ -1,5 +1,5 @@
 """Execution boundary for the editable, pure-Python actuator."""
 
-from .client import ActuatorWorker, WorkerError, WorkerIsolationError, WorkerTimeout
+from .client import ActuatorWorker, WheelActuatorWorker, WorkerError, WorkerIsolationError, WorkerTimeout
 
-__all__ = ["ActuatorWorker", "WorkerError", "WorkerIsolationError", "WorkerTimeout"]
+__all__ = ["ActuatorWorker", "WheelActuatorWorker", "WorkerError", "WorkerIsolationError", "WorkerTimeout"]

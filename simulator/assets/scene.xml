@@ -1,0 +1,31 @@
+<mujoco model="RealityPatch vehicle test track">
+  <compiler angle="degree"/>
+  <option timestep="0.002" integrator="implicit" cone="elliptic" impratio="10" iterations="80" tolerance="1e-9"/>
+  <default>
+    <geom friction="1.1 0.005 0.0001" condim="3" solref="0.01 1" solimp="0.95 0.99 0.001"/>
+  </default>
+  <visual>
+    <global offwidth="1280" offheight="720"/>
+    <map znear="0.05" zfar="500"/>
+    <headlight ambient="0.4 0.4 0.4" diffuse="0.7 0.7 0.7"/>
+  </visual>
+  <statistic center="50 0 0" extent="60"/>
+  <asset>
+    <texture name="sky" type="skybox" builtin="gradient" rgb1="0.12 0.22 0.35" rgb2="0.7 0.8 0.9" width="256" height="1536"/>
+    <material name="paint" rgba="0.08 0.65 0.85 1" specular="0.5" shininess="0.5"/>
+    <material name="glass" rgba="0.08 0.14 0.22 1" specular="0.7"/>
+    <material name="rubber" rgba="0.045 0.05 0.065 1"/>
+  </asset>
+  <worldbody>
+    <light pos="50 -10 30" dir="0 0 -1" directional="true"/>
+    <camera name="overview" pos="52 -90 75" xyaxes="1 0 0 0 0.64 0.77" fovy="60"/>
+    <camera name="side" pos="70 -55 18" xyaxes="1 0 0 0 0.3 0.954" fovy="65"/>
+    <geom name="road_before" type="box" pos="-230 0 -0.1" size="270 20 0.1" priority="1" rgba="0.19 0.23 0.27 1"/>
+    <geom name="road_patch" type="box" pos="80 0 -0.1" size="40 20 0.1" priority="1" rgba="0.19 0.23 0.27 1"/>
+    <geom name="road_after" type="box" pos="560 0 -0.1" size="440 20 0.1" priority="1" rgba="0.19 0.23 0.27 1"/>
+    <geom name="left_line" type="box" pos="70 4 0.005" size="90 0.04 0.005" rgba="0.9 0.9 0.85 1" contype="0" conaffinity="0"/>
+    <geom name="right_line" type="box" pos="70 -4 0.005" size="90 0.04 0.005" rgba="0.9 0.9 0.85 1" contype="0" conaffinity="0"/>
+    <geom name="brake_line" type="box" pos="45 0 0.008" size="0.12 4 0.005" rgba="1 0.65 0.1 1" contype="0" conaffinity="0"/>
+  </worldbody>
+  <include file="car.xml"/>
+</mujoco>

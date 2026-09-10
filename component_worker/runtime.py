@@ -67,6 +67,20 @@ def candidate_source_line(error):
     return line if type(line) is int and 1 <= line <= MAX_BYTES else None
 
 
+def valid_number(value, *, lower=None, upper=1e9):
+    if type(value) not in (int, float) or not math.isfinite(value) or abs(value) > upper:
+        raise ValueError("invalid number")
+    if lower is not None and value < lower:
+        raise ValueError("invalid number")
+
+
+def valid_vector(values, *, lower=None, upper=1e9):
+    if type(values) is not list or len(values) != 4:
+        raise ValueError("invalid vector")
+    for value in values:
+        valid_number(value, lower=lower, upper=upper)
+
+
 def main():
     limits()
     # Candidate print/log calls cannot fill an unread pipe or corrupt messages.
@@ -80,6 +94,7 @@ def main():
     module.__file__ = "actuator.py"
     state = None
     ready = False
+    protocol = None
     while True:
         line = incoming.readline(MAX_BYTES + 1)
         if not line:
@@ -91,23 +106,39 @@ def main():
             request = json.loads(line)
             identifier = request["id"]
             operation = request["operation"]
+            if protocol is None:
+                protocol = request.get("protocol")
+                if protocol not in ("scalar_v1", "wheel_v2"):
+                    raise ValueError("unknown component protocol")
+            elif request.get("protocol") != protocol:
+                raise ValueError("component protocol cannot change")
+            wheel = protocol == "wheel_v2"
+            if wheel and operation in ("torque_limits", "advance"):
+                valid_number(request["brake"], lower=0, upper=1)
+                valid_vector(request["omega"], upper=1e6)
+                if operation == "advance":
+                    valid_vector(request["applied_torque"])
+                    valid_number(request["dt"], lower=1e-9, upper=60)
             if not ready:
                 source = open("actuator.py", encoding="utf-8").read(MAX_BYTES + 1)
                 exec(compile(source, "actuator.py", "exec"), module.__dict__)
-                for name in ("init_state", "compute_force", "advance_state"):
+                functions = ("init_state", "compute_brake_torque_limits", "advance_state", "on_trial_reset") if wheel else (
+                    "init_state", "compute_force", "advance_state")
+                for name in functions:
                     if not callable(getattr(module, name, None)):
                         raise TypeError("missing function")
                 ready = True
             if operation == "reset":
                 state = module.init_state()
                 value = state
-            elif operation == "force":
+            elif (operation == "force" and not wheel) or (operation == "torque_limits" and wheel):
                 # A force query cannot advance history. Give it a detached copy
                 # and check both copies: candidate globals may retain a reference
                 # to the original object returned by init_state/advance_state.
                 snapshot = json.dumps(state, allow_nan=False, sort_keys=True)
                 force_state = json.loads(snapshot)
-                value = module.compute_force(force_state, request["brake"], request["velocity"])
+                value = (module.compute_brake_torque_limits(force_state, request["brake"], request["omega"])
+                         if wheel else module.compute_force(force_state, request["brake"], request["velocity"]))
                 try:
                     valid_state(force_state)
                     valid_state(state)
@@ -116,13 +147,24 @@ def main():
                 except (ValueError, TypeError, OverflowError):
                     unchanged = False
                 if not unchanged:
-                    outgoing.write(json.dumps({"id": identifier, "ok": False, "reason": "state_mutation"}).encode() + b"\n")
+                    reason = "wheel_state_mutation" if wheel else "state_mutation"
+                    outgoing.write(json.dumps({"id": identifier, "ok": False, "reason": reason}).encode() + b"\n")
                     return
-                if type(value) not in (int, float) or not math.isfinite(value) or value < 0 or value > 1e9:
-                    outgoing.write(json.dumps({"id": identifier, "ok": False, "reason": "invalid_force"}).encode() + b"\n")
+                try:
+                    if wheel:
+                        valid_vector(value, lower=0)
+                    else:
+                        valid_number(value, lower=0)
+                except (ValueError, TypeError, OverflowError):
+                    reason = "invalid_torque" if wheel else "invalid_force"
+                    outgoing.write(json.dumps({"id": identifier, "ok": False, "reason": reason}).encode() + b"\n")
                     return
             elif operation == "advance":
-                state = module.advance_state(state, request["brake"], request["velocity"], request["applied_force"], request["dt"])
+                state = (module.advance_state(state, request["brake"], request["omega"], request["applied_torque"], request["dt"])
+                         if wheel else module.advance_state(state, request["brake"], request["velocity"], request["applied_force"], request["dt"]))
+                value = state
+            elif operation == "reposition" and wheel:
+                state = module.on_trial_reset(state)
                 value = state
             elif operation == "inspect":
                 value = state
