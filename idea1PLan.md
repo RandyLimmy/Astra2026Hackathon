@@ -2,11 +2,15 @@
 
 Based on [idea1.md](idea1.md) and [idea1UseCases.md](idea1UseCases.md).
 
+This is a **builder-facing plan**, incorporating the later bumper-impact walkthrough and requirement to keep the reference implementation hidden. Do not include this document, the original ideas, or the pasted walkthrough in the investigation agent's context. Brake fade remains the first committed build; the bumper example below is a separate optional scenario, not an additional first-demo requirement.
+
 ## 1. What we are building
 
 Start with **use case 3: brake fade**. RealityPatch investigates why a simple braking simulator predicts the wrong stopping distance, requests experiments, adds missing history-dependent behavior to the simulator's code, and predicts an unseen braking trial before its result is revealed.
 
 **Required implementation choice: use the second approach from `idea1.md`—a small editable Python actuator model coupled to MuJoCo's mechanics.** Astra must add missing state and its evolution to that Python component. For brake fade, this component models brake force and its history dependence; for the later robot use case, it models motor torque. **We are repairing the actuator model, not rewriting MuJoCo's engine.** MuJoCo is part of the first working demo, not a later optional upgrade.
+
+The coupling is implemented behind a neutral interface. Astra sees the incomplete Python component and experiment observations; it is not told that MuJoCo is the backend and cannot inspect the engine, bridge, scene, or complete reference model. Its existing knowledge of MuJoCo and possible physical mechanisms is legitimate background knowledge; we cannot erase that knowledge or promise it cannot infer the backend. The test is whether observations support a useful repair, not whether it reproduces our exact hidden code.
 
 This approach best matches our intended **source-code extension** contribution. Enabling an existing thermal option would demonstrate configuration repair; it does not fulfill the source-extension goal we have chosen. Requiring extra code does not itself make the research novel. Our claim must rest on the connection from evidence and experiments to a tested executable extension and improved unseen predictions.
 
@@ -21,7 +25,7 @@ The current repository contains the two idea documents and no implementation. Th
 **Person 2 owns getting a working OpenAI API key before the live agent loop can run.** Create a key in the team's authorized OpenAI API project, or obtain the event-provided credential through the organizers' approved process. Follow the [official OpenAI quickstart](https://developers.openai.com/api/docs/quickstart) to configure `OPENAI_API_KEY` in the host backend's environment; the OpenAI SDK reads that variable.
 
 - Confirm the project's API credits/billing, usage limits, and actual access to the intended Astra and Sol models. A key alone does not demonstrate model access; make a small test request with each configured model ID.
-- Keep the key in the host environment or a local ignored `.env` loaded by the backend. Person 2 owns `.gitignore` and a placeholder-only `.env.example`. Keep real keys out of Git, frontend code, run logs, and the generated-code sandbox, following [OpenAI's authentication guidance](https://developers.openai.com/api/reference/overview#authentication).
+- Keep the key in the host environment or a local ignored `.env` loaded by the backend. The repository's `.gitignore` excludes `.env` and `.env.*` while allowing a placeholder-only `.env.example`; Person 2 owns maintaining those rules and creating the example. Keep real keys out of Git, frontend code, run logs, and the generated-code sandbox, following [OpenAI's authentication guidance](https://developers.openai.com/api/reference/overview#authentication).
 - Record the working model IDs and a successful request/tool-response check, without recording the credential. Person 1 can keep building the simulator with fake fixtures while access is being configured.
 
 These are implementation prerequisites assigned to the team; this planning update does not create a credential or verify this project's API access.
@@ -44,7 +48,7 @@ Defer physical hardware, full vehicle dynamics, ABS, steering, tire slip, realis
 
 ## 3. Minimum physical model
 
-Use **Python + MuJoCo + NumPy**, with SciPy for parameter fitting. Install the official `mujoco` Python package following the [MuJoCo Python documentation](https://mujoco.readthedocs.io/en/latest/python.html#installation), then pin versions that work on both laptops. MuJoCo advances mechanical position and velocity; the editable Python actuator computes braking force and evolves any state Astra adds. A standalone numerical model can be a development cross-check, but the submitted demo must execute the Python actuator inside the MuJoCo simulation loop.
+Use **Python + MuJoCo + NumPy**, with SciPy for parameter fitting. Install the official `mujoco` Python package following the [MuJoCo Python documentation](https://mujoco.readthedocs.io/en/latest/python.html#installation), then pin versions that work on both laptops. MuJoCo advances mechanical position and velocity; the editable Python actuator computes braking force and evolves any state Astra adds. A standalone numerical model can be a development cross-check, but the submitted demo must use the isolated Python actuator's force output in the host's actual MuJoCo rollout.
 
 ### Mechanical engine and editable actuator boundary
 
@@ -59,9 +63,9 @@ advance_state(actuator_state, brake_command, velocity, applied_braking_force_n, 
     -> next_actuator_state
 ```
 
-The starting implementation has an empty actuator state, a fixed command-to-force mapping, and a no-op state update. Astra can extend these functions with a persistent state, its update rule, and its effect on force. Keep all three in the editable Python component. The host handles mechanical initialization and passes observed preparation history through the same actuator interface.
+The starting implementation has an empty actuator state, a fixed command-to-force mapping, and a no-op state update. Astra can extend these functions with a persistent state, its update rule, and its effect on force. Keep all three in the editable Python component. It uses ordinary numeric inputs and its own state, with no MuJoCo imports or engine objects. The host handles mechanical initialization and passes observed preparation history through the same actuator interface.
 
-For the one-axis prototype, the bridge can apply net drive/brake force through `data.qfrc_applied` before calling `mujoco.mj_step(model, data)`. MuJoCo documents this force-input and stepping interface in its [main simulation API](https://mujoco.readthedocs.io/en/latest/APIreference/APIfunctions.html#main-simulation). Set the force afresh each step and evolve Python state once per physics timestep, using the braking force actually applied after any stop handling. Freeze the bridge and scene during agent runs; restrict source edits to the actuator component.
+For the one-axis prototype, the host-only bridge can apply net drive/brake force through `data.qfrc_applied` before calling `mujoco.mj_step(model, data)`. MuJoCo documents this force-input and stepping interface in its [main simulation API](https://mujoco.readthedocs.io/en/latest/APIreference/APIfunctions.html#main-simulation). Set the force afresh each step and evolve Python state once per physics timestep, using the braking force actually applied after any stop handling. Freeze the bridge and scene during agent runs; restrict source edits to the actuator component. Execute that component in a separate isolated worker and exchange numeric messages with the host; do not import agent-authored code into the host's MuJoCo process. The candidate worker receives only candidate-rollout quantities or allowed preparation observations, never reference latent state.
 
 The following equations describe the intended model; MuJoCo integrates the mechanical part rather than duplicating it in a separate Python motion solver.
 
@@ -111,7 +115,11 @@ Show that the candidate treats these probe starts as equivalent, while the refer
 
 Give the agent room to investigate: vary the number of prior stops, braking intensity, and rest duration. A useful next experiment compares similar prior braking with short versus long recovery. Recovery supports a reversible hidden-state explanation over permanent wear, although motion alone does not establish that the state is physically temperature.
 
-The agent's initial task should say that the simulator may be incomplete and should report uncertainty. Do not tell it to “add temperature,” expose the reference equations, or give it this planning document. Log its stated hypotheses, chosen experiments, evidence, and explanation; do not require a transcript of private internal reasoning.
+Before every additional reference experiment, require the agent to record the requested sequence, the competing hypotheses it is testing, the observable result expected under each hypothesis, and what would weaken its current explanation. Qualitative expectations are sufficient; use numerical ranges when justified. The broker saves this record before executing the request. For example, recovery after waiting would support a reversible effect; no recovery over the tested interval would favor a more persistent effect without proving permanent damage. Keep these prospective expectations separate from the explanation written after results arrive.
+
+Define reset actions precisely. Starting a **fresh specimen** resets both mechanics and the component's history state. Repositioning/reaccelerating the same specimen changes only the specified visible mechanical state while preserving component history. Waiting advances time and the component's update rule. Never treat “wait,” “prepare another trial,” and “start fresh” as interchangeable. Within an experiment, each preparation and wait remains in the recorded history.
+
+Use an initial task such as: “Here is an incomplete Python model and access to an unknown reference system. Use observations and experiments to produce a better model. State expected observations before requesting an experiment, and report uncertainty.” Do not tell it to “add temperature,” name the backend, expose reference equations, or give it this planning document. Log its stated hypotheses, chosen experiments, evidence, and explanation; do not require a transcript of private internal reasoning.
 
 ### Held-out prediction and reveal
 
@@ -127,16 +135,21 @@ Reset the reference independently between scenarios, while preserving state with
 
 ## 5. Architecture and the interface to agree first
 
-Keep the first version in one Python project, with a fixed MuJoCo bridge and editable Python actuator. Use JSON artifacts to connect the simulation, agent, evaluation, and presentation. Start the presentation as a simple local page/report that reads saved MuJoCo trajectories; live rendering is optional. This avoids making the physics depend on a frontend framework.
+Keep the builders' implementation in one Python project, but export only an allowlisted task package to the investigation workspace. The fixed MuJoCo bridge stays host-side and the editable Python actuator runs in an isolated worker. Use JSON artifacts to connect the simulation, agent, evaluation, and presentation. Start the presentation as a simple local page/report that reads saved MuJoCo trajectories; live rendering is optional. Builder/demo metadata is separate from agent-visible tool results.
 
 ```text
-Agent workspace                         Host-controlled environment
------------------------------           ---------------------------
-Editable Python actuator + observations <--> Broker -> private actuator + MuJoCo
-          |
-          +--> fixed MuJoCo bridge ------> validation metrics
-          |
-          +--> frozen Python actuator ---> MuJoCo evaluator -> results -> demo
+Investigation workspace                 Host-controlled services
+-----------------------                 ------------------------
+Incomplete Python source + traces <----> Neutral experiment/validation broker
+                                                |
+                         +----------------------+----------------------+
+                         |                                             |
+              Private reference + MuJoCo                  Candidate MuJoCo bridge
+                                                                       |
+                                              numeric messages only <-> isolated
+                                                                       Python worker
+
+Frozen candidate -> host-only evaluation -> prediction/reveal artifacts -> demo
 ```
 
 Before splitting work, agree on these contracts and commit one fake fixture that exercises them. The names below are proposed interfaces to implement, not existing commands.
@@ -144,28 +157,40 @@ Before splitting work, agree on these contracts and commit one fake fixture that
 | Contract | Minimum inputs | Minimum outputs / behavior |
 | --- | --- | --- |
 | Actuator interface above | Opaque actuator state; command; velocity; applied force; timestep | Force and next state; original and patched implementations both work with the same fixed MuJoCo bridge |
-| `run_experiment(spec)` | Request ID; sequence of bounded drive, brake, and rest phases; full-reset flag | Experiment ID and observed samples: `t_s`, `x_m`, `v_mps`, `brake`, `drive_force_n`, phase boundaries; no hidden state |
+| `run_experiment(spec)` | Request ID; bounded drive/brake/wait sequence; explicit fresh/continue semantics; hypotheses and expected observations | Neutral experiment ID and observed samples: `t_s`, `x_m`, `v_mps`, `brake`, `drive_force_n`, phase boundaries; no hidden state or backend metadata |
 | `predict(candidate, history, probe)` | Candidate version; preparation samples; visible initial probe state; future commands | Probe samples, predicted stopping distance/time, completion status |
-| `validate_candidate(candidate)` | Candidate version | Import/interface checks, finite-output checks, actual MuJoCo rollout, development errors, bounded runtime result |
+| `validate_candidate(candidate)` | Candidate version | Neutral status, candidate-code errors, finite-output checks and development metrics; host executes the actual MuJoCo rollout without exposing backend details |
 | `submit_candidate(candidate)` | Candidate version and concise explanation | Immutable source/parameter hash; closes editing for that evaluation |
 | Host-only `evaluate(submission, suite)` | Frozen submission and reserved scenarios | Per-scenario scores, prediction/reveal artifacts, aggregate scores |
 
 Contract details to resolve in the first 20 minutes:
 
 - Define each phase's termination rule: target speed, full stop, or elapsed duration, always with a time cap. A host driver may accelerate to a target; record the actual applied force.
+- Make every experiment's specimen lifecycle explicit: either start fresh and include the full preparation sequence, or continue the caller's identified specimen. Isolate specimen sessions across models/runs; never reuse another run's hidden or candidate state.
 - Use SI units, monotonically increasing timestamps, a shared sampling interval, and relative distance at the start of each probe.
 - The candidate interface separates history ingestion from future rollout and allows additional internal state without changing its public output fields.
 - History ingestion uses a frozen state-update rule. It may estimate state from past observations, but must not fit new parameters or an arbitrary initial state separately for each holdout.
 - Stop when speed falls below one fixed small threshold. If a probe does not stop within the horizon, return `not_stopped`; do not invent a stopping distance or discard the case.
-- Use explicit error/status fields for malformed requests, invalid patches, timeouts, and non-stopping trajectories.
-- A run artifact includes schema version, model identifier, actuator source hash, MuJoCo version, scene/bridge configuration hash, timestep, scenario IDs, tool counts, timing, prediction arrays, and metrics.
+- Use explicit error/status fields for malformed requests, invalid patches, timeouts, and non-stopping trajectories. Expose actionable candidate-file errors; keep host stack traces, paths, engine symbols, and internal configuration in builder-only logs.
+- The host audit artifact includes schema version, model identifier, actuator source hash, MuJoCo version, scene/bridge configuration hash, timestep, scenario IDs, tool counts, timing, prediction arrays, and metrics. The separate agent-visible projection contains only permitted observations, candidate errors, budgets/status, and development results.
 - Person 1 owns schema changes; both agree before an interface changes. Person 2 can build against fake JSON immediately.
 
 ### Agent execution boundary
 
-The investigation loop is: inspect evidence → state hypotheses → request experiment → inspect results → patch candidate → validate → submit.
+The investigation loop is: inspect evidence → state hypotheses and expected outcomes → request experiment → inspect results → patch candidate → validate → submit.
 
-Expose candidate actuator reads/edits, the experiment broker, and the bounded MuJoCo candidate runner. Provide read-only interface/mechanics documentation as needed. Run generated code in an isolated workspace with time limits and no access to the reference source, evaluator, hidden fixtures, project planning docs, Git history, or service credentials. A folder named `hidden` inside an otherwise readable checkout is not isolation. Use an allowlisted workspace/container and a broker outside it; keep `OPENAI_API_KEY` only in the host adapter. The agent cannot modify the MuJoCo engine, bridge, scene, or scoring code.
+| Astra may access | Keep inaccessible to Astra and its generated code |
+| --- | --- |
+| Incomplete Python component and its own patches/state | Complete reference model, parameters, hidden temperature/damage, or developer solution |
+| Neutral function contracts, units, allowed inputs and observation definitions | MuJoCo modules, bridge/scene files, engine configuration and engine-identifying metadata |
+| Its requested experiment observations and development validation | Reserved test specifications during development and future probe outcomes before prediction freeze |
+| Its previous expectations, results, and candidate-code errors | Planning docs, answer-bearing filenames/comments, Git history, host logs, credentials, and other agents' runs |
+
+Expose only source read/edit tools and neutral operations such as `run_experiment`, `validate_candidate`, and `submit_candidate`. Use neutral case IDs and action names such as `wait` or `new_specimen`; do not expose names such as `test_damaged_bumper`, `thermal_reference`, or fields such as `damage_level`. Do not feed builder/demo labels into the agent context.
+
+Use a separate reference service and a separate candidate-code worker with enforced filesystem/process/network boundaries. Neither the investigation workspace nor that worker mounts the host repository or installs/loads MuJoCo. A persistent worker exchanges bounded numeric messages with the host bridge and holds only its own component state. This preserves Python-to-MuJoCo coupling without giving the submitted code engine access through imports or Python introspection. Keep `OPENAI_API_KEY` in the host model adapter. An instruction not to read a file, or a directory named `hidden`, is insufficient.
+
+Start a fresh investigation session from the allowlisted package; do not reuse a builder-assistant conversation that already read the reference or this plan. Before scored runs, verify that the workspace cannot read the reference/bridge/engine, and inspect success/error tool payloads for engine names, hidden-state fields, solution hints, and host paths. These checks establish the access boundary; they cannot establish that the model has no prior physics knowledge or cannot guess the backend. Accept an alternative internal representation if it satisfies the source-extension and predictive criteria.
 
 Start with a provisional budget of **six additional experiments, three patch attempts, and eight minutes per agent run**, plus the same initial evidence. Also cap phase count, total simulated duration, force/speed ranges, and returned sample count per experiment so one request cannot contain unlimited trials. Person 1 sets those limits from the development rig before comparison runs. Count failed requests and attempts consistently. Confirm that this fits actual model latency and event limits before freezing the comparison protocol.
 
@@ -175,21 +200,21 @@ Use one thin model adapter with configurable model IDs for Astra and Sol. Verify
 
 **Your job:** make the missing dynamics measurable and provide a trustworthy way to execute and score the Python actuator repair. Person 1 also owns integration. One teammate takes this entire workstream; the other takes section 7.
 
-**Own these files:** `sim/`, the initial `candidate/actuator.py` template, `reference_host/`, `evaluation/`, `contracts/`, `fixtures/`, simulator tests, and the dependency manifest. After handing off the candidate template, freeze it as the starting baseline; agent patches go into separate per-run copies.
+**Own these files:** `sim/`, the initial `candidate/actuator.py` template, `reference_host/`, `component_worker/`, `evaluation/`, `contracts/`, `fixtures/`, simulator/boundary tests, and the dependency manifest. After handing off the candidate template, freeze it as the starting baseline; agent patches go into separate per-run copies.
 
 Do these tasks in order:
 
 1. **Install and verify MuJoCo.** Load the minimal slide-joint scene from Python and prove that a known applied force changes its position/velocity without opening a viewer. Share the working dependency versions.
 2. **Agree the contract with Person 2.** Commit the actuator interface, units, reset/phase semantics, one fake JSON run artifact, and candidate stub. This is the early handoff that lets Person 2 proceed independently.
-3. **Build the fixed mechanics bridge and both actuator paths.** Couple the simple editable Python candidate to MuJoCo. Run the richer reference actuator privately using identical mechanics and separate state. Preserve history across drive/brake/rest phases.
+3. **Build the fixed mechanics bridge and both actuator paths.** Couple the editable Python candidate worker to host-side MuJoCo through numeric messages. Run the richer reference privately with identical mechanics and separate state. Enforce the filesystem/process/network boundary; no generated code is imported into the engine process. Preserve history across drive/brake/rest phases.
 4. **Produce the mismatch and verify solvability.** Generate rested and repeated-use probes; check a developer-written stateful actuator on development scenarios. Keep that solution private from the investigation agent.
-5. **Build the experiment broker and checks.** Return only observable traces. Check resets, force signs, stopping behavior, actuator-state persistence, and timestep convergence. Reserve final scenario specifications before the first scored agent run.
+5. **Build the experiment broker and checks.** Return only the neutral observation schema and save expected outcomes before executing requests. Check resets, force signs, stopping behavior, state persistence, timestep convergence, and denied access to reference/engine files. Reserve final scenario specifications before the first scored agent run.
 6. **Build the evaluator.** Add parameter-only fitting, the no-fade control, immutable submission hashes, withheld prediction/reveal, and per-scenario metrics. All scored candidate rollouts must use MuJoCo.
 7. **Integrate and verify the final run.** Help connect Person 2's patch runner, verify the executed actuator diff and metrics, and document the reproduction command.
 
 **Hand to Person 2:** first the fixture + interface + candidate stub; next the real broker/runner + example traces; finally frozen predictions + reference results + score artifacts. Each handoff includes a runnable command and expected output.
 
-**Your completion gate:** an original and a stateful Python actuator run through the same MuJoCo mechanics, the agent's submitted actuator can be scored without changing the engine/scene, and withheld outcomes remain protected until prediction is frozen.
+**Your completion gate:** an original and a stateful Python actuator run through the same MuJoCo mechanics, the submitted actuator has no access to engine/reference internals, and withheld outcomes remain protected until prediction is frozen.
 
 ## 7. Person 2: get the API key, build the agent, and present the demo
 
@@ -200,10 +225,10 @@ Do these tasks in order:
 Do these tasks in order:
 
 1. **Get and configure the OpenAI API key.** Complete the required setup in section 1, configure `OPENAI_API_KEY` only in the backend, and verify a small authenticated request. Check Astra and Sol access using the actual configured model IDs. Create ignored local configuration and a placeholder-only example file.
-2. **Build against Person 1's fake fixture.** Implement the model adapter, structured tool requests/results, and a simple run display while the real simulator is still being built.
-3. **Implement the investigation tools.** Allow candidate-source reads/edits, bounded experiment requests, MuJoCo validation, and final submission. Handle invalid tool arguments, runtime failures, and exhausted budgets explicitly.
+2. **Build against Person 1's fake fixture.** Implement the adapter, structured tool requests/results, and a simple run display. Start a fresh investigation context with only the allowlisted task package; exclude builder conversations, engine names, and mechanism hints.
+3. **Implement the investigation tools.** Allow source reads/edits and neutral experiment/validation/submission operations. Require hypotheses, expected observations, and a disconfirming result before each additional experiment. Return useful candidate-code errors while keeping host paths, stack traces, and engine metadata private.
 4. **Require a real source extension.** Save each patch to a fresh run workspace, execute the changed `candidate/actuator.py` through the fixed bridge, and show whether added state/update code improves development predictions. A configuration toggle or coefficient-only change is not the required extension.
-5. **Connect the real broker and evaluator.** Replace the fixture with Person 1's runner without changing the agreed schema. Keep the API key outside the generated-code sandbox. Log hypotheses, selected experiments, source diffs, validation results, and submission hashes.
+5. **Connect the real broker and evaluator.** Replace the fixture with Person 1's service without changing the schema. Keep the API key outside the candidate worker. Log expectations before experiments and findings afterward. With Person 1, inspect agent-visible success/error payloads for leaks before scored runs.
 6. **Run the model comparison.** Use fresh Astra/Sol runs with matched starting conditions and budgets. Hand the submitted actuator versions to Person 1 for final evaluation; do not patch after seeing holdout outcomes.
 7. **Build and rehearse the demo.** Display the actual Python source diff, original/repaired MuJoCo predictions, reference reveal, errors, synthetic labels, and clearly marked live/replay status. Save a replay of a real completed run.
 
@@ -217,9 +242,9 @@ This is an aggressive timebox with MuJoCo now required. Cut presentation polish 
 
 | Elapsed time | Person 1 | Person 2 | Shared checkpoint / exit condition |
 | --- | --- | --- | --- |
-| 0:00–0:20 | Verify MuJoCo force-to-motion; agree actuator/observation contracts | Obtain/configure API key; verify request; agree tools/artifacts | MuJoCo smoke test and API request work; commit contract, fixture, ownership, dependencies |
-| 0:20–1:20 | Build fixed MuJoCo bridge, both Python actuator paths, and matched probes; reserve holdouts | Build against fixture: adapter, tool dispatcher, result view | Real mismatch and a developer stateful-actuator solvability check; Person 2 can complete a tool call and render a run |
-| 1:20–2:00 | Connect real broker; add parameter fitting and basic checks | Connect tools to actuator-source editing and MuJoCo validation | First complete run: evidence → experiment → executable Python actuator extension → MuJoCo score |
+| 0:00–0:20 | Verify MuJoCo force-to-motion; agree neutral contracts and isolation boundary | Obtain/configure API key; verify request; agree allowlisted task package | MuJoCo smoke test and API request work; commit contract, fixture, ownership, dependencies |
+| 0:20–1:20 | Build host bridge, isolated candidate worker, private reference, matched probes; reserve holdouts | Build adapter, neutral dispatcher, expectations log, result view against fixture | Real mismatch and developer solvability check; Person 2 can complete a tool call and render a run |
+| 1:20–2:00 | Connect broker; add parameter fitting and boundary/reset checks | Connect source editing and neutral validation; inspect payloads for leaks | Blind boundary verified; first complete evidence → expected outcome → experiment → Python extension → MuJoCo score |
 | 2:00–3:00 | Implement freeze/reveal and no-fade control | Improve patch feedback; show real code diff and prediction artifacts | Working frozen prediction before reference reveal |
 | 3:00–4:00 | Run baselines, control, and solver checks; collect per-case scores | Run Astra/Sol with equal budgets; handle failures and prepare replay | Results saved with provenance; no edits based on final holdout results |
 | 4:00–5:00 | Verify clean-checkout instructions and review results | Polish visualization and rehearse the short demo | Joint rehearsal, honest labels, final integrated commit |
@@ -257,9 +282,11 @@ Set these provisional engineering targets before final evaluation; they are goal
 - The cool-brake check does not regress materially; use a tolerance of the larger of **0.5 m or 5% of reference stopping distance**.
 - A separate **no-fade reference** is already explainable by the simple model. Run the investigation there too and check whether the agent avoids claiming unsupported missing physics or making predictions worse.
 - The frozen candidate executes without invalid states, hidden-data access, or evaluation edits.
+- The investigation receives a neutral task/interface, with no disclosed engine identity or reference implementation; candidate execution cannot inspect the engine process or files. Record the access checks with the host audit artifacts.
+- Every additional experiment has a timestamped specification and expected-outcomes record saved before observations are returned.
 - Predictions are saved before future reference results are available to the agent or demo audience.
 
-The source-extension requirement applies to the deliberately incomplete brake-fade case. On the no-fade control, retaining the adequate original model is a valid outcome; do not force unnecessary state into that control.
+The source-extension requirement applies to the deliberately incomplete brake-fade case. On the no-fade control, retaining the adequate original model is a valid outcome; do not force unnecessary state into that control. A repaired model need not copy the hidden equations, coefficients, variable names, or code. Score its valid executable structure and unseen predictions, with uncertainty about physical interpretation.
 
 Both models get the same prompt, initial candidate, initial evidence, tools, allowed actions, holdout suite, and budget ceilings. Their chosen experiments may differ—that is part of the task. Start each run fresh with no other model's patches or transcript. If time allows, run three paired repetitions using the same scenario seeds; otherwise explicitly label the comparison as one exploratory run per model. Show failures and ties as well as successes; one demo does not establish general model superiority.
 
@@ -270,7 +297,7 @@ Motion evidence may support a useful latent state without uniquely identifying t
 Keep the presentation to roughly three minutes:
 
 1. **Mismatch, 30 seconds:** cold and repeated-use stops start at the same speed. Show the original stopping marker and the synthetic reference crossing it.
-2. **Investigation, 45 seconds:** show the agent's stated competing hypotheses, selected recovery experiment, and observed result.
+2. **Investigation, 45 seconds:** show the agent's competing hypotheses and expected outcomes recorded before its selected experiment, then show the observed result and interpretation.
 3. **Repair, 30 seconds:** show the actual Python actuator diff introducing state/evolution and its executed MuJoCo validation. Explain that the actuator was repaired while MuJoCo supplies the mechanics.
 4. **Prediction, 45 seconds:** display the frozen original and repaired stopping predictions for the reserved trial; then reveal the reference trajectory.
 5. **Evidence, 30 seconds:** display errors for all reserved probes, the parameter-fit baseline, and Astra/Sol results if available.
@@ -285,6 +312,7 @@ Record a replay of a real run once the loop works. Label replay versus live exec
 | --- | --- |
 | No model tool call works by minute 30 | Person 2 resolves access while Person 1 continues with fixtures. A scripted driver can test plumbing, but cannot count as the agent result. |
 | MuJoCo coupling is not working by hour 1 | Simplify the scene to one slide joint and run without a viewer. Cut visual polish; keep MuJoCo mechanics and the editable Python actuator as required scope. |
+| Isolation or neutral-payload checks fail | Fix the service/worker boundary and leaked context before scored runs. A run with disclosed internals must be labeled assisted and cannot count as the blind experiment. |
 | No clear physics mismatch by hour 1 | Simplify to one braking axis and deterministic observations; adjust synthetic parameters using development scenarios only. |
 | No complete executable repair loop by hour 2 | Stop UI polish and extra comparisons; both debug the smallest evidence → patch → validation path. |
 | Generated patches fail | Return concrete syntax/runtime/interface errors within the fixed attempt budget. Retain the last valid version and report submission failure if needed. |
@@ -302,6 +330,25 @@ Suggested continuation order after use case 3 is **robot arm/gripper (1)**, then
 | 2: Robot arm/gripper | Reuse MuJoCo coupling, agent tools, artifact format, isolation, model comparison | Replace the slide scene with a one-joint robot scene and the brake component with an editable Python motor actuator | Predict new joint-motion histories using source-code extension of the actuator |
 | 3: Phone throttling | Investigation and submission workflow | Replace commands/observations with workload and performance; add a synthetic thermal reference | Predict unseen workload/rest sequences and demonstrate model reuse |
 
+### Optional bumper-impact experiment from the walkthrough
+
+This is a separate example to build after the brake-fade milestone if the team chooses it. It does not replace the first use case or require building realistic vehicle collisions. It uses the same principle of an editable Python force component coupled to hidden MuJoCo mechanics; here that component represents a bumper/contact law rather than a brake actuator.
+
+Person 1 would own the cart/wall scene, bumper reference, reset semantics, and impact metrics. Person 2 would reuse the neutral tools, expectation log, source patching, and reveal display with the new observation schema.
+
+| Step | What happens | What the experiment establishes |
+| --- | --- | --- |
+| 1. Build the toy system | A cart hits a wall; the Python bumper component supplies contact force while MuJoCo advances motion. Disable duplicate native contact response for that modeled interaction in both reference and candidate paths. | Exactly one modeled bumper force acts; the engine still supplies mechanics. |
+| 2. Define the omission | The private reference accumulates an internal history variable and is deliberately designed to soften and dissipate more energy after sufficiently strong impacts. The visible Python component uses fixed properties. | These are toy-reference assumptions, not general claims about real bumpers. |
+| 3. Observe a fresh impact | Start a fresh specimen and record time, position, velocity, compression, and contact force at a chosen starting speed. | A good fit on one fresh collision alone does not establish missing state. |
+| 4. Repeat on the same specimen | Reposition the cart to the same visible starting conditions without resetting component history; repeat the impact. | Different compression/rebound despite matched visible conditions exposes a history-dependent mismatch. |
+| 5. Investigate | Before each request, state expected outcomes for a fresh specimen, waiting before reusing a specimen, or changing prior impact severity. Then reveal the observed response. | Fresh-specimen recovery, lack of recovery over the tested wait, and severity dependence can support a persistent mechanism; none proves a unique material explanation. |
+| 6. Extend source | The agent adds its own state, an update rule driven by prior impacts, and an effect on the force law. Numerical tools fit coefficients on development data. | State comes from observed history, never the private reference damage value or one answer per recording. |
+| 7. Freeze and predict | Freeze code/parameters, then supply a new preparation history such as two gentle impacts, one stronger impact, and a pause. Predict the final impact at a different speed before revealing its outcome. | The frozen model must maintain its estimated state and generalize to a new sequence. |
+| 8. Reveal and score | Compare peak compression, rebound velocity, and force-trace error for the original, parameter-fit baseline, and repaired component. Use actual run values. | Predictive improvement is measured independently of whether the state is named “damage.” |
+
+Define impact-specific phase endings and validation: rebound needs signed velocity, so the brake scenario's no-backward-motion guard must not suppress it. Check single contact-force application and physically sensible energy behavior in development. Use an unchanged-property bumper as the adequate-model control. Keep bumper scores separate from braking-distance scores, and reserve its final sequences independently.
+
 Define a small scenario adapter only when adding the second use case: observation fields, experiment actions, candidate entry point, metrics, and renderer. Avoid building a generic plugin framework during the first demo. Hardware measurements and stronger novelty comparisons belong after the synthetic workflow is established.
 
 ## 13. First actions when implementation starts
@@ -310,6 +357,8 @@ Define a small scenario adapter only when adding the second use case: observatio
 - [ ] Person 2 obtains/configures the OpenAI API key and verifies model access with a small request.
 - [ ] Person 1 installs MuJoCo and verifies that the Python actuator's force drives the minimal mechanical scene.
 - [ ] Commit the shared schema, one fake run artifact, and the dependency setup.
+- [ ] Verify that the investigation task package and candidate worker cannot access engine/reference internals, and that tool results contain only the neutral schema.
+- [ ] Require a saved expected-outcomes record before each additional experiment executes.
 - [ ] Branch into simulation/evaluation and agent/demo workstreams.
 - [ ] Person 1 produces the two matched probe traces; Person 2 completes one tool call against the fixture.
 - [ ] Integrate the first complete Python actuator source-extension → MuJoCo rollout → evaluation loop before polishing the presentation.
