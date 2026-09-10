@@ -5,12 +5,17 @@ import '../scenario-replay.css';
 const DEFAULT_SCENARIOS = [
   { id: 'quadruped_gait_failure', title: 'Dog · loss of balance', description: 'A faster walk exposes a coordination failure.', objective: 'Walk forward along the marked strip, then increase speed without falling.', status: 'missing' },
   { id: 'drone_delivery_imbalance', title: 'Drone · delivery imbalance', description: 'An uneven load turns a delivery into a crash.', objective: 'Carry the parcel from A to B, deliver it, and return to A.', status: 'missing' },
+  { id: 'warehouse_curve_demo', title: 'Warehouse train · the bend', description: 'A loaded trolley loses stability around the curve.', objective: 'Complete the marked route with the cargo aboard.', status: 'missing' },
+  { id: 'car_auto_brake_failure', title: 'Car · braking too late', description: 'A late automatic brake trigger leads to a barrier collision.', objective: 'Approach the barrier at the declared speed and stop before contact.', status: 'missing' },
 ];
 
 const OUTCOME_METRICS = [
   ['distance_before_speed_transition_m', 'Walk before speed-up', ' m'],
   ['forward_progress_before_impact', 'Travel before impact', ' m'],
   ['impact_speed', 'Impact speed', ' m/s'],
+  ['stopped', 'Stopped safely', ''],
+  ['bumper_clearance', 'Barrier clearance', ' m'],
+  ['stopping_distance', 'Braking distance', ' m'],
   ['max_tilt_deg', 'Maximum tilt', '°'],
   ['max_tilt_degrees', 'Maximum tilt', '°'],
   ['body_contact_duration_s', 'Body contact', ' s'],
@@ -29,13 +34,14 @@ function Icon({ name, size = 18 }) {
     arrow: <path d="m9 5-7 7 7 7M2 12h20" />,
     dog: <><path d="m3 8 3 4h9l2-7h3l2 4-4 2v7m-3-6 1 7M7 12l-2 7m5-7 1 7" /></>,
     car: <><path d="m4 10 2-5h12l2 5m-17 0h18v9h-3v-3H6v3H3Zm4 3h1m8 0h1" /></>,
+    warehouse: <><path d="M3 7h16v10H3ZM7 7V3h9v4M19 12h3" /><circle cx="6" cy="19" r="2" /><circle cx="16" cy="19" r="2" /></>,
     drone: <><path d="m6 6 12 12M6 18 18 6M10 10h4v4h-4Zm0 7v4h5v-4" /><ellipse cx="5" cy="5" rx="4" ry="2" /><ellipse cx="19" cy="5" rx="4" ry="2" /><ellipse cx="5" cy="17" rx="4" ry="2" /><ellipse cx="19" cy="17" rx="4" ry="2" /></>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 
 const humanize = value => String(value || '').replaceAll('_', ' ').replace(/^./, value => value.toUpperCase());
-const scenarioIcon = id => id.startsWith('car_') ? 'car' : id.startsWith('quadruped_') ? 'dog' : 'drone';
+const scenarioIcon = id => id.startsWith('warehouse_') ? 'warehouse' : id.startsWith('car_') ? 'car' : id.startsWith('quadruped_') ? 'dog' : 'drone';
 
 async function readJson(url, signal) {
   const response = await fetch(url, { signal, headers: { Accept: 'application/json' } });
@@ -201,7 +207,7 @@ export default function ScenarioReplay({ onBack, offlineManifest = window.__SCEN
     <main className="scenario-main">
       <div className="scenario-heading">
         <div><p className="scenario-eyebrow">Recorded simulations</p><h1>{isReference || isCandidate ? 'Inspect the recorded motion.' : 'See exactly where it goes wrong.'}</h1><p className="scenario-intro">{isReference ? 'A developer-authored reference correction, ready to replay and inspect.' : isCandidate ? 'A recorded candidate attempt, ready to replay and inspect.' : 'Physical failures. Every moment ready to replay and inspect.'}</p></div>
-        <span className="scenario-repair-status"><span /> Astra repair: <strong>Not run</strong></span>
+        <span className="scenario-repair-status"><span /><strong>Recorded scenario archive</strong></span>
       </div>
 
       <nav className="scenario-cards" aria-label="Failure scenarios">
@@ -225,7 +231,7 @@ export default function ScenarioReplay({ onBack, offlineManifest = window.__SCEN
             <div className={`scenario-viewport ${frameSrc && !imageFailed ? 'has-frame' : ''}`}>
               {frameSrc && !imageFailed ? <img src={frameSrc} alt={`${selected?.title}, ${humanize(camera)} camera, ${time.toFixed(2)} seconds`} draggable="false" onError={() => {
                 if (frameSrcRef.current === frameSrc) { setFailedFrame(frameSrc); setPlaying(false); }
-              }} /> : <div className="scenario-empty" role="status"><span className="scenario-empty-icon"><Icon name={selectedId === DEFAULT_SCENARIOS[0].id ? 'dog' : 'drone'} size={42} /></span><h2>{loading ? 'Loading recorded motion…' : imageFailed ? 'This frame could not be loaded' : 'No playable recording yet'}</h2><p>{mediaError || (imageFailed ? 'Try another moment or camera, or reload the saved recording.' : loading ? 'Preparing synchronized camera views and the event timeline.' : 'The simulation recording is not available. Reload once the saved frames are ready.')}</p>{!loading && <button className="scenario-button" type="button" onClick={refresh}><Icon name="restart" />Reload recordings</button>}</div>}
+              }} /> : <div className="scenario-empty" role="status"><span className="scenario-empty-icon"><Icon name={scenarioIcon(selectedId)} size={42} /></span><h2>{loading ? 'Loading recorded motion…' : imageFailed ? 'This frame could not be loaded' : 'No archived recording yet'}</h2><p>{mediaError || (imageFailed ? 'Try another moment or camera, or reload the saved recording.' : loading ? 'Preparing synchronized camera views and the event timeline.' : 'Original previews and new Astra / Sol task runs are available in Investigations. This separate archive contains saved scenario exports.')}</p>{!loading && <button className="scenario-button" type="button" onClick={refresh}><Icon name="restart" />Reload recordings</button>}</div>}
               {manifest && frameSrc && !imageFailed && <><div className="scenario-frame-label"><span>{loop ? 'Inspecting failure · loop' : time >= duration ? 'End of recording' : playing ? 'Playing' : 'Paused'}</span><span>{clockLabel(time)}</span></div><span className="scenario-frame-phase">{humanize(sample?.phase || currentEvent?.label || currentEvent?.event || 'Recorded motion')}</span></>}
             </div>
 

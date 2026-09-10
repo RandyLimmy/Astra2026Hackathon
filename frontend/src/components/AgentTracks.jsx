@@ -3,8 +3,8 @@ import { AGENTS, actionStatus, formatValue, metadataOf, readable, summaryOf } fr
 import { Chevron } from './Icons.jsx';
 import { SectionTitle } from './OriginalScenario.jsx';
 
-const STAGE_LABELS = { attempted: 'Action attempted', applied: 'Change applied', rejected: 'Action rejected', verified: 'Check completed', failed: 'Check failed', proposed: 'Proposed only', completed: 'Completed' };
-const KIND_LABELS = { repair: 'Physical intervention', model_edit: 'Predictive model change', inspection: 'Inspection', experiment: 'Experiment', verification: 'Verification', prediction: 'Prediction experiment', submission: 'Submission' };
+const STAGE_LABELS = { attempted: 'Action attempted', applied: 'Change applied', unchanged: 'Controller unchanged', rejected: 'Action rejected', verified: 'Check completed', failed: 'Check failed', proposed: 'Proposed only', completed: 'Completed' };
+const KIND_LABELS = { controller_edit: 'Controller change', repair: 'Physical intervention', model_edit: 'Predictive model change', inspection: 'Inspection', experiment: 'Task attempt', verification: 'Task verification', prediction: 'Prediction experiment', submission: 'Submission' };
 
 export function DataDetails({ label, value, diff = false }) {
   const [open, setOpen] = useState(false);
@@ -14,7 +14,7 @@ export function DataDetails({ label, value, diff = false }) {
 }
 
 function Checkpoint({ checkpoint, index }) {
-  const [open, setOpen] = useState(['repair', 'model_edit'].includes(checkpoint.kind));
+  const [open, setOpen] = useState(['controller_edit', 'repair', 'model_edit'].includes(checkpoint.kind));
   const failed = ['rejected', 'failed'].includes(checkpoint.stage);
   return <li className={`checkpoint ${open ? 'checkpoint-open' : ''}`}>
     <span className="checkpoint-number">{index + 1}</span>
@@ -28,7 +28,7 @@ function Checkpoint({ checkpoint, index }) {
         <dt>Status</dt><dd className={failed ? 'text-fail' : ''}>{STAGE_LABELS[checkpoint.stage] || readable(checkpoint.stage)}{checkpoint.stage === 'applied' && ' · outcome requires verification'}</dd>
       </dl>
       {checkpoint.changes?.length > 0 && <div className="table-scroll"><table className="changes-table"><caption>Exact recorded adjustments</caption><thead><tr><th>Parameter</th><th>Before</th><th>After</th></tr></thead><tbody>{checkpoint.changes.map((change, i) => <tr key={i}><td>{change.parameter}</td><td>{formatValue(change.before)}</td><td>{formatValue(change.after)}</td></tr>)}</tbody></table></div>}
-      {checkpoint.source_diff && <DataDetails label="Exact source diff" value={checkpoint.source_diff} diff />}
+      {checkpoint.source_diff && <DataDetails label={checkpoint.kind === 'controller_edit' ? 'Exact controller diff' : 'Exact source diff'} value={checkpoint.source_diff} diff />}
       {checkpoint.error && <p className="checkpoint-error text-fail">{typeof checkpoint.error === 'string' ? checkpoint.error : formatValue(checkpoint.error)}</p>}
       <DataDetails label="Recorded tool result" value={checkpoint.result} />
       {checkpoint.timestamp && <p className="footnote">Recorded {new Date(checkpoint.timestamp).toLocaleTimeString()}</p>}
@@ -51,12 +51,12 @@ function AgentTrack({ agent, run, profile, comparisonActive }) {
     {error && <p className="track-error" role="alert">{typeof error === 'string' ? error : error.message || 'The investigation could not complete.'}</p>}
     {checkpoints.length ? <ol className="checkpoint-list">{checkpoints.map((checkpoint, index) => <Checkpoint key={checkpoint.id || `${checkpoint.tool}-${index}`} checkpoint={checkpoint} index={index} />)}</ol> : <div className="track-empty"><strong>{active || comparisonActive ? 'Preparing the investigation' : 'No changes recorded yet'}</strong><p>{active || comparisonActive ? 'Actions and exact adjustments appear here as this model works.' : `${agent.label} will inspect the scenario, attempt justified fixes, and check the result.`}</p></div>}
     {explanation.length > 0 && <div className="recorded-explanations"><h4>Recorded statements</h4><p className="footnote">Model statements are separate from executed actions.</p>{explanation.map((entry, index) => <DataDetails key={index} label={`Statement ${index + 1}`} value={entry.text} />)}</div>}
-    {run?.story?.source?.diff && <DataDetails label="Complete predictive model diff" value={run.story.source.diff} diff />}
+    {run?.story?.source?.diff && <DataDetails label="Complete controller diff" value={run.story.source.diff} diff />}
     {summary.latest_status && <p className="footnote">{summary.latest_status}</p>}
     {metadata.stop_reason && <p className="footnote">Stopped: {readable(metadata.stop_reason)}</p>}
   </article>;
 }
 
 export default function AgentTracks({ comparison, profiles = {} }) {
-  return <section className="story-section" aria-labelledby="changes-heading"><SectionTitle number="02"><span id="changes-heading">What changed</span></SectionTitle><div className="agent-columns">{AGENTS.map(agent => <AgentTrack key={`${comparison?.id || 'new'}-${agent.id}`} agent={agent} run={comparison?.runs?.[agent.id]} profile={profiles[agent.id]} comparisonActive={comparison?.active} />)}</div><p className="section-note">A proposed fix, an applied change, and a verified result are tracked separately. Physical interventions and predictive model edits are identified in every checkpoint.</p></section>;
+  return <section className="story-section" aria-labelledby="changes-heading"><SectionTitle number="02"><span id="changes-heading">What changed</span></SectionTitle><div className="agent-columns">{AGENTS.map(agent => <AgentTrack key={`${comparison?.id || 'new'}-${agent.id}`} agent={agent} run={comparison?.runs?.[agent.id]} profile={profiles[agent.id]} comparisonActive={comparison?.active} />)}</div><p className="section-note">Each checkpoint records the exact controller adjustment, its stated reason, and the measured result. A proposed fix, an applied edit, and a completed task have separate statuses.</p></section>;
 }

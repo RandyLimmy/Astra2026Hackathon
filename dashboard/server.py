@@ -123,6 +123,7 @@ class Dashboard:
         self.launcher = launcher
         self.jobs = {}
         self.comparison_jobs = {}
+        self.batch_jobs = {}
         self.lock = threading.RLock()
         self.monitor_jobs = monitor_jobs
         self.stop_monitor = threading.Event()
@@ -314,6 +315,8 @@ class Dashboard:
                 not isinstance(body["profile"], str) or body["profile"] not in PROFILES):
             raise RequestError(400, "Choose a supported model profile.")
         with self.lock:
+            if self.list_batches()["active_batch_id"]:
+                raise RequestError(409, "A scenario batch is already active.")
             if self.list_comparisons()["active_comparison_id"]:
                 raise RequestError(409, "A comparison is already active.")
             if self.list_runs()["active_run_id"]:
@@ -352,7 +355,20 @@ class Dashboard:
         return True
 
     def scenario_catalog(self):
-        return platform_story.scenarios()
+        result = platform_story.scenarios()
+        for platform in result["platforms"]:
+            run_id = "preview-control-" + platform["id"]
+            platform["preview"] = None
+            try:
+                summary = self.summary(run_id)
+                if (summary["metadata"].get("kind") == "control_task_preview"
+                        and summary["metadata"].get("platform") == platform["id"]):
+                    platform["preview"] = {"summary": summary,
+                                           "story": platform_story.story(self, run_id, summary)}
+            except RequestError as error:
+                if error.status != 404:
+                    raise
+        return result
 
     def comparison_summary(self, comparison_id):
         self.run_path(comparison_id)
@@ -361,7 +377,8 @@ class Dashboard:
         with self.lock:
             job = self.comparison_jobs.get(comparison_id)
             job = dict(job) if job else None
-        if not job and manifest.get("kind") != "platform_parallel_comparison":
+        if not job and (manifest.get("kind") != "platform_parallel_comparison"
+                        or manifest.get("task_kind") != "controller_repair"):
             raise RequestError(404, "Comparison not found.")
         status = manifest.get("status", "launching")
         active = status not in TERMINAL
@@ -376,11 +393,26 @@ class Dashboard:
                 status = "interrupted" if not job else "failed"
                 latest_status = "The comparison process exited before recording completion. Saved child results remain available."
         fallback = job or {}
+        run_statuses = {}
+        for label in ("astra", "sol"):
+            child = next((row for row in manifest.get("runs", [])
+                          if isinstance(row, dict) and row.get("label") == label), {})
+            try:
+                child_summary = self.summary(comparison_id + "-" + label)
+                child_status = child_summary["status"]
+                child_active = child_summary["active"] and active
+                if not active and child_status not in TERMINAL:
+                    child_status = "interrupted"
+            except RequestError:
+                child_status = child.get("status", "starting" if active else "failed")
+                child_active = active and child_status not in TERMINAL
+            run_statuses[label] = {"status": child_status, "active": child_active}
         return {"id": comparison_id, "platform": manifest.get("platform", fallback.get("platform")),
                 "scenario": manifest.get("scenario", fallback.get("scenario")), "status": status, "active": active,
                 "start_at": manifest.get("start_at", fallback.get("started_at")), "end_at": manifest.get("end_at"),
                 "comparison_valid": manifest.get("comparison_valid"), "warnings": manifest.get("warnings", []),
                 "latest_status": latest_status,
+                "run_statuses": run_statuses,
                 "runs": {label: comparison_id + "-" + label for label in ("astra", "sol")}}
 
     def list_comparisons(self):
@@ -460,8 +492,10 @@ class Dashboard:
     def start_comparison(self, body):
         if (not isinstance(body, dict) or set(body) != {"platform", "scenario"} or
                 not platform_story.valid_scenario(body.get("platform"), body.get("scenario"))):
-            raise RequestError(400, "Choose an available new car, drone, or robot dog scenario.")
+            raise RequestError(400, "Choose the robot dog, drone delivery, warehouse bend, or car braking scenario.")
         with self.lock:
+            if self.list_batches()["active_batch_id"]:
+                raise RequestError(409, "A scenario batch is already active.")
             if self.list_comparisons()["active_comparison_id"]:
                 raise RequestError(409, "A comparison is already active.")
             if self.list_runs()["active_run_id"]:
@@ -470,7 +504,7 @@ class Dashboard:
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             comparison_id = f"pair-{body['platform']}-{stamp}-{uuid4().hex[:8]}"
             output = self.run_path(comparison_id)
-            args = [str(self.root / ".venv" / "bin" / "python"), "-m", "investigation.platform_pair",
+            args = [str(self.root / ".venv" / "bin" / "python"), "-m", "investigation.task_pair",
                     "--platform", body["platform"], "--scenario", body["scenario"], "--output", str(output),
                     "--max-api-requests", "16", "--max-seconds", "1800"]
             try:
@@ -481,6 +515,87 @@ class Dashboard:
             self.comparison_jobs[comparison_id] = {"process": process, "platform": body["platform"],
                                                     "scenario": body["scenario"], "started_at": timestamp()}
             return self.comparison_summary(comparison_id)
+
+    def batch_summary(self, batch_id):
+        self.run_path(batch_id)
+        manifest = read_json(self.artifact(batch_id, "batch.json"))
+        manifest = manifest if isinstance(manifest, dict) else {}
+        with self.lock:
+            job = self.batch_jobs.get(batch_id)
+            job = dict(job) if job else None
+        if not job and (manifest.get("kind") != "control_task_batch"
+                        or manifest.get("task_kind") != "controller_repair"):
+            raise RequestError(404, "Batch not found.")
+        # Preserve which tasks an archived batch actually launched. Older
+        # three-task batches must not acquire a nonexistent car comparison.
+        recorded_comparisons = manifest.get("comparisons")
+        platforms = [platform for platform in platform_story.CATALOG
+                     if not isinstance(recorded_comparisons, dict) or platform in recorded_comparisons]
+        status = manifest.get("status", "launching")
+        active = status not in TERMINAL
+        if active:
+            active = (job["process"].poll() is None if job else
+                      self._pid_alive(manifest.get("supervisor_pid")))
+            if not active:
+                # Pair children run independently and may still be completing
+                # after a supervisor exits. Keep the paid-launch guard active.
+                active = any(self._comparison_active(batch_id + "-" + platform)
+                             for platform in platforms)
+                status = "running" if active else "failed" if job else "interrupted"
+        return {"id": batch_id, "status": status, "active": active,
+                "start_at": manifest.get("start_at", (job or {}).get("started_at")),
+                "end_at": manifest.get("end_at"),
+                "comparisons": {platform: batch_id + "-" + platform for platform in platforms},
+                "warnings": manifest.get("warnings", [])}
+
+    def _comparison_active(self, comparison_id):
+        try:
+            return self.comparison_summary(comparison_id)["active"]
+        except RequestError:
+            return False
+
+    def list_batches(self):
+        if self.runs_dir.is_symlink():
+            raise RequestError(404, "Run directory unavailable.")
+        with self.lock:
+            ids = set(self.batch_jobs)
+        if self.runs_dir.is_dir():
+            for path in self.runs_dir.iterdir():
+                if path.is_dir() and not path.is_symlink() and IDENTIFIER.fullmatch(path.name):
+                    try:
+                        if self.artifact(path.name, "batch.json").is_file():
+                            ids.add(path.name)
+                    except RequestError:
+                        continue
+        batches = []
+        for batch_id in ids:
+            try:
+                batches.append(self.batch_summary(batch_id))
+            except RequestError:
+                continue
+        batches.sort(key=lambda value: (value.get("start_at") or "", value["id"]), reverse=True)
+        return {"batches": batches, "active_batch_id": next((row["id"] for row in batches if row["active"]), None)}
+
+    def start_batch(self, body):
+        if not isinstance(body, dict) or body:
+            raise RequestError(400, "The batch runs all selected scenarios; send an empty object.")
+        with self.lock:
+            if self.list_batches()["active_batch_id"]:
+                raise RequestError(409, "A scenario batch is already active.")
+            if self.list_comparisons()["active_comparison_id"] or self.list_runs()["active_run_id"]:
+                raise RequestError(409, "An investigation is already active.")
+            self.runs_dir.mkdir(exist_ok=True)
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            batch_id = f"batch-{stamp}-{uuid4().hex[:8]}"
+            args = [str(self.root / ".venv" / "bin" / "python"), "-m", "investigation.task_batch",
+                    "--output", str(self.run_path(batch_id)), "--max-api-requests", "16", "--max-seconds", "1800"]
+            try:
+                process = self.launcher(args, cwd=str(self.root), stdin=subprocess.DEVNULL,
+                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            except OSError:
+                raise RequestError(503, "The scenario batch could not start.") from None
+            self.batch_jobs[batch_id] = {"process": process, "started_at": timestamp()}
+            return self.batch_summary(batch_id)
 
 
 class DashboardServer(ThreadingHTTPServer):
@@ -559,6 +674,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 raise RequestError(404, "Scenario endpoint not found.")
             if parts == ["api", "comparisons"]:
                 return self._json(200, app.list_comparisons())
+            if parts in (["api", "batches"], ["api", "batches", "list"]):
+                return self._json(200, app.list_batches())
+            if parts[:2] == ["api", "batches"] and len(parts) == 3:
+                return self._json(200, app.batch_summary(parts[2]))
             if parts[:2] == ["api", "comparisons"] and (len(parts) == 3 or
                     len(parts) == 4 and parts[3] == "story"):
                 return self._json(200, app.comparison_detail(parts[2]))
@@ -598,7 +717,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             self._check_origin(mutation=True)
-            if self.path not in {"/api/runs", "/api/comparisons"}:
+            if self.path not in {"/api/runs", "/api/comparisons", "/api/batches"}:
                 raise RequestError(404, "Endpoint not found.")
             if self.headers.get_content_type() != "application/json":
                 raise RequestError(415, "Run creation requires JSON.")
@@ -614,7 +733,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(length))
             except (ValueError, UnicodeError):
                 raise RequestError(400, "Invalid JSON request.") from None
-            launch = (self.server.dashboard.start_comparison if self.path == "/api/comparisons"
+            launch = (self.server.dashboard.start_batch if self.path == "/api/batches" else
+                      self.server.dashboard.start_comparison if self.path == "/api/comparisons"
                       else self.server.dashboard.start_run)
             self._json(202, launch(body))
         except RequestError as error:

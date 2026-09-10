@@ -146,3 +146,41 @@ footer { display: flex; justify-content: space-between; gap: 18px; font-size: 11
 
 .failure-demos-link { display: inline-block; margin-top: 9px; font-size: 13px; text-decoration: none; }
 .failure-demos-link:hover { text-decoration: underline; }
+
+.parallel-note { display: block; color: var(--muted); font-size: 12px; margin-top: 9px; }
+.batch-overview { margin: 0 0 17px; padding: 0 17px 15px; border-bottom: 1px solid var(--border); }
+.batch-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; font-size: 12px; margin-bottom: 8px; }
+.batch-heading > span { color: var(--muted); font-size: 11px; }
+.batch-tasks { display: grid; grid-template-columns: repeat(var(--task-count), minmax(0, 1fr)); gap: 12px; }
+.batch-task { text-align: left; background: #fff; border: 1px solid var(--border); border-radius: 4px; padding: 11px 13px; color: #34435b; min-width: 0; }
+.batch-task:hover { border-color: #a7bcdd; background: #fafcff; }
+.batch-task.selected { border-color: #739de9; background: #f7faff; box-shadow: inset 0 2px 0 var(--blue); }
+.batch-task > strong { font-size: 13px; font-weight: 600; }
+.batch-agents { display: flex; gap: 15px; margin-top: 7px; font-size: 11px; }
+.batch-agents > span { display: grid; grid-template-columns: 6px auto; align-items: center; gap: 3px 5px; min-width: 0; }
+.batch-agents i { height: 5px; width: 5px; background: var(--astra); border-radius: 50%; }
+.batch-agents .sol i { background: var(--sol); }
+.batch-agents > span > span { grid-column: 2; color: var(--muted); overflow-wrap: anywhere; font-size: 10px; }
+.task-verification-label { font-size: 11px; color: var(--muted); }
+.clip-detail { font-size: 10px; color: var(--muted); line-height: 1.5; margin-top: 4px; }
+.reassessment-note { margin-top: 10px; padding: 9px 10px; border-left: 2px solid #729be1; background: #f5f8ff; color: #455773; font-size: 10px; line-height: 1.55; overflow-wrap: anywhere; }
+.reassessment-note > strong { display: block; font-size: 11px; font-weight: 600; color: #29466f; }
+.reassessment-note p { margin-top: 5px; }
+.reassessment-note time { display: block; margin-top: 6px; color: var(--muted); font-size: 9px; }
+.scenario-controls label:only-child select { width: 162px; }
+.recorded-frame { aspect-ratio: 16 / 9; }
+.compact-frame { aspect-ratio: 16 / 9; }
+@media (max-width: 720px) {
+  .start-button { font-size: 12px; padding: 8px 10px; margin-left: 0; }
+  .app-header .brand { flex: 1; }
+  .scenario-controls label:only-child select { width: 100%; }
+  .batch-overview { padding: 0 4px 13px; }
+  .batch-tasks { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .batch-task { padding: 9px 8px; }
+  .batch-task > strong { font-size: 12px; }
+  .batch-agents { flex-direction: column; gap: 7px; }
+  .batch-heading { align-items: flex-start; }
+  .batch-heading > span { text-align: right; max-width: 47%; }
+  .compact-frame { min-height: 75px; }
+  footer a { width: fit-content; }
+}

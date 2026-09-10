@@ -49,9 +49,9 @@ def _read(path):
 
 
 def child_command(output, *, platform, scenario, label, profile, max_api_requests=16,
-                  max_seconds=1800, no_frames=False):
+                  max_seconds=1800, no_frames=False, control_task=False):
     output = Path(output).resolve()
-    command = [sys.executable, "-m", "investigation.platform_run", "--platform", platform,
+    command = [sys.executable, "-m", "investigation.task_run" if control_task else "investigation.platform_run", "--platform", platform,
                "--scenario", scenario, "--profile", profile, "--comparison-id", output.name,
                "--output", str(output.parent / f"{output.name}-{label}"),
                "--max-api-requests", str(max_api_requests), "--max-seconds", str(max_seconds)]
@@ -177,12 +177,17 @@ def _stop_children(processes):
 
 
 def run_pair(output, *, platform, scenario=None, max_api_requests=16, max_seconds=1800,
-             no_frames=False, launcher=None):
+             no_frames=False, launcher=None, control_task=False):
     _validate_options(platform, max_api_requests, max_seconds)
-    from .platform_physics import DEFAULTS, SCENARIOS
-    scenario = scenario or DEFAULTS[platform]
-    if scenario not in SCENARIOS[platform]:
-        raise ValueError("Choose a supported scenario for the selected platform")
+    if control_task:
+        from .tasks import TASKS
+        if scenario not in TASKS or TASKS[scenario]["platform"] != platform:
+            raise ValueError("Choose a declared controller task matching the selected platform")
+    else:
+        from .platform_physics import DEFAULTS, SCENARIOS
+        scenario = scenario or DEFAULTS[platform]
+        if scenario not in SCENARIOS[platform]:
+            raise ValueError("Choose a supported scenario for the selected platform")
     output = Path(output).resolve()
     if not COMPARISON_ID.fullmatch(output.name):
         raise ValueError("Use a comparison directory name of at most 120 letters, digits, underscores or hyphens, starting with a letter or digit")
@@ -192,6 +197,7 @@ def run_pair(output, *, platform, scenario=None, max_api_requests=16, max_second
         Settings.load(profile=profile)  # Validate both without making any API call.
     output.mkdir(parents=True, exist_ok=False)
     manifest = {"schema_version": 1, "kind": "platform_parallel_comparison",
+                "task_kind": "controller_repair" if control_task else "platform_repair",
                 "comparison_id": output.name, "platform": platform, "scenario": scenario,
                 "status": "launching", "supervisor_pid": os.getpid(), "start_at": timestamp(), "end_at": None,
                 "requested_reasoning": "ultra", "api_reasoning_effort": "max",
@@ -219,7 +225,7 @@ def run_pair(output, *, platform, scenario=None, max_api_requests=16, max_second
                 stream = stack.enter_context((output / f"{entry['label']}.log").open("w"))
                 command = child_command(output, platform=platform, scenario=scenario, label=entry["label"],
                                         profile=entry["profile"], max_api_requests=max_api_requests,
-                                        max_seconds=max_seconds, no_frames=no_frames)
+                                        max_seconds=max_seconds, no_frames=no_frames, control_task=control_task)
                 process = launcher(command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT,
                                    start_new_session=True)
                 processes.append(process)

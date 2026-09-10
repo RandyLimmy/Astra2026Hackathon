@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 from importlib.metadata import version
 import json
@@ -37,8 +38,8 @@ def _json(value) -> str:
 
 
 def _validate_options(platform, max_api_requests, max_seconds):
-    if platform not in PLATFORMS:
-        raise ValueError("Choose car, drone or quadruped")
+    if platform not in (*PLATFORMS, "warehouse"):
+        raise ValueError("Choose car, drone, quadruped or warehouse")
     if (type(max_api_requests) is not int or not 1 <= max_api_requests <= 20
             or type(max_seconds) is not int or not 60 <= max_seconds <= 7200):
         raise ValueError("Use 1–20 API requests and a 60–7200 second time budget")
@@ -146,7 +147,8 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
                 "max_api_requests": max_api_requests, "max_seconds": max_seconds,
                 "agent_submitted": False, "stop_reason": None,
                 "comparison_id": comparison_id, "pid": os.getpid(), "model_effort_confirmed": False,
-                "host_reminders": 0,
+                "host_reminders": 0, "image_inputs": 0,
+                "task_kind": getattr(broker, "task_kind", None),
                 "usage": {key: 0 for key in ("input_tokens", "output_tokens", "total_tokens",
                                              "reasoning_tokens", "cached_input_tokens")}}
     save_json(run_dir / "metadata.json", metadata)
@@ -157,11 +159,13 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
         # Never serialize CLI arguments, a physics object's attributes or a preset.
         evidence = broker.initial_evidence()
         schemas = broker.tool_schemas
-        system = SYSTEM_PROMPT.read_text()
-        contract = CONTRACT.read_text()
-        task = (f"Investigate the supplied {platform} system. Diagnose the observed mismatch, "
+        system = getattr(broker, "system_prompt", SYSTEM_PROMPT.read_text())
+        contract = getattr(broker, "contract_text", CONTRACT.read_text())
+        instruction = getattr(broker, "task_instruction", f"Investigate the supplied {platform} system. Diagnose the observed mismatch, "
                 "use maintenance when justified, and repair the predictive model if needed. "
-                "State evidence and uncertainty separately from verified outcomes.\n\n"
+                "State evidence and uncertainty separately from verified outcomes.")
+        inspection_target = "controller" if metadata["task_kind"] == "controller_repair" else "model"
+        task = (instruction + "\n\n"
                 "## Public model contract\n\n" + contract +
                 "\n\n## Public capabilities and initial evidence\n\n" + _json(evidence) +
                 f"\n\n## API request budget\n\nThis session allows at most {max_api_requests} API requests "
@@ -170,7 +174,7 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
                 "the remaining API requests. Call submit_result with diagnosis, evidence and "
                 "remaining_uncertainty before requests run out. Otherwise the host finalizes "
                 "the current source and maintenance record without claiming that you submitted it. "
-                "Start by inspecting the system and model.")
+                f"Start by inspecting the system and {inspection_target}.")
         prompts = run_dir / "prompts"
         prompts.mkdir(exist_ok=False)
         (prompts / "system.md").write_text(system)
@@ -186,6 +190,7 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
         paths.update(str(path.relative_to(ROOT)) for path in (ROOT / "component_worker").glob("*.py"))
         paths.update(f"simulator/platforms/{name}.py" for name in ("__init__", "car_damage", "drone", "quadruped", "quadruped_controller"))
         paths.update(str(path.relative_to(ROOT)) for path in (ROOT / "simulator/assets/platforms").rglob("*.xml"))
+        paths.update(getattr(broker, "protocol_paths", ()))
         capabilities = evidence.get("capabilities", {})
         manifest = {"schema_version": 2, "platform": platform,
                     "source_sha256": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
@@ -216,6 +221,7 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
         conversation = [{"role": "system", "content": system}, {"role": "user", "content": task}]
         allowed = {tool["name"] for tool in schemas}
         nudged = False
+        pending_visual_evidence = []
         while metadata["api_requests"] < max_api_requests and time.monotonic() - started < max_seconds:
             metadata["api_requests"] += 1
             save_json(run_dir / "metadata.json", metadata)
@@ -223,6 +229,13 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
                 f"{selected.model} / {selected.reasoning_effort}.")
             response = request_response(client, conversation, schemas, profile=selected.name,
                                         max_output_tokens=MAX_OUTPUT_TOKENS)
+            # Count newly attached images only after a request containing them
+            # returns. A final-budget view_frames call may never send its queue.
+            # Earlier conversation images are retained, but are not counted twice.
+            metadata["image_inputs"] += len(pending_visual_evidence)
+            for evidence_item in pending_visual_evidence:
+                log("visual_evidence", **evidence_item)
+            pending_visual_evidence.clear()
             add_usage(metadata["usage"], response)
             effort = response.reasoning.effort if response.reasoning else None
             log("api_response", response_id=response.id, model=response.model, reasoning_effort=effort,
@@ -276,6 +289,18 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
                 log("tool_result", name=call.name, result=tool_result)
                 conversation.append({"type": "function_call_output", "call_id": call.call_id,
                                      "output": _json(tool_result)})
+                if hasattr(broker, "pop_images"):
+                    images = broker.pop_images()
+                    if images:
+                        content = []
+                        for item in images:
+                            raw_image = Path(item["path"]).read_bytes()
+                            content.extend([{"type": "input_text", "text": item["label"]},
+                                            {"type": "input_image", "image_url": "data:image/jpeg;base64," +
+                                             base64.b64encode(raw_image).decode("ascii"), "detail": "high"}])
+                            pending_visual_evidence.append({"label": item["label"],
+                                                            "image_sha256": hashlib.sha256(raw_image).hexdigest()})
+                        conversation.append({"role": "user", "content": content})
                 if broker.submitted:
                     metadata["stop_reason"] = "agent_submission"
                     break

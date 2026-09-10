@@ -1,5 +1,111 @@
 # RealityPatch
 
+The current testing scope is **these four complete control tasks**:
+
+| Machine | Scenario ID | Required successful outcome |
+| --- | --- | --- |
+| Robot dog | `quadruped_gait_failure` | Follow the requested speed transition along the walking strip while staying upright. |
+| Drone | `drone_delivery_imbalance` | Deliver the parcel from A to B, release it on the pad, return unloaded, and land at A. |
+| Warehouse trolley | `warehouse_curve_demo` | Complete the marked 90-degree bend and exit with the cargo aboard and no ground impact. |
+| Car braking | `car_auto_brake_failure` | Stop in the marked zone before the wall without impact, using the fixed 22 m/s approach. |
+
+The warehouse scene is a differential-drive trolley. Older fault-maintenance
+presets remain in the repository as historical workflows, separate from the
+current controller tasks and batch.
+
+The car task declares a 22 m/s approach so a controller-only braking repair is
+physically feasible. Its original preview and all model trials use this same
+speed and the same four preparation cycles. The retained legacy preset's
+25 m/s approach is unchanged.
+
+Astra and GPT-5.6 Sol can inspect recorded RGB images, public sensor measurements,
+the original controller and its permitted settings; install controller changes;
+and run the **same complete task** again. The physical world, initial conditions,
+mission and deadline stay fixed. A successful prediction, an applied edit, or a
+stationary machine does not by itself satisfy the task. The
+[tooling guide](docs/ASTRA_TOOLING.md) describes the seven tools and task criteria.
+
+## Preview the original tasks without model calls
+
+The preview-only command records the initial controller's actual failure for the
+dashboard. It does not load API credentials or request a model response. On a
+fresh checkout, generate the four named previews:
+
+```sh
+.venv/bin/python -m investigation.task_run --scenario quadruped_gait_failure --preview-only --output runs/preview-control-quadruped
+.venv/bin/python -m investigation.task_run --scenario drone_delivery_imbalance --preview-only --output runs/preview-control-drone
+.venv/bin/python -m investigation.task_run --scenario warehouse_curve_demo --preview-only --output runs/preview-control-warehouse
+.venv/bin/python -m investigation.task_run --scenario car_auto_brake_failure --preview-only --output runs/preview-control-car
+```
+
+Each output must be new. Existing previews can be opened directly; they are
+original engineering recordings, not model attempts or successful repairs.
+`--no-frames` records only telemetry and cannot provide dashboard animation or
+RGB evidence to an investigator.
+
+## Open the dashboard
+
+From the repository root, with the [Python environment](#setup-and-checks) installed
+and Node.js/npm available:
+
+```sh
+cd frontend
+npm ci
+npm run build
+cd ..
+.venv/bin/python -m dashboard
+```
+
+Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)**. Opening the page, selecting
+a scenario or replaying saved footage makes no model API call. It shows the
+original task first, Astra and Sol's separate action checkpoints next, and the
+Original/Astra/Sol result recordings on a shared simulation clock. Checkpoints
+show the stated reason, exact before/after controller values, JSON diff, rejected
+attempts and measured outcomes. Missing or unsuccessful results remain explicit.
+
+## Start the four-task comparison when ready
+
+The dashboard's **Run all 4 · Astra + Sol** button starts the live model batch.
+The equivalent terminal command is:
+
+```sh
+.venv/bin/python -m investigation.task_batch --output runs/control-batch-001
+```
+
+This command makes API calls. It starts all four scenario pairs concurrently;
+each pair starts two independent investigations concurrently: **`gpt-6-astra` /
+`max`** and **`gpt-5.6-sol` / `max`**. There are eight isolated model sessions in
+one batch. Both models receive the same task, initial evidence, tools, controller
+and budgets for each pair. They cannot see one another's work. The default limits
+are **16 API responses and 1,800 seconds per model**, with bounded completion
+grace for in-flight work and final verification. The dashboard blocks another
+batch or individual comparison while one is active.
+
+Use a fresh output name for each batch. `runs/<batch-id>/batch.json` tracks the
+four pair supervisors; `<batch-id>-<platform>/comparison.json` tracks each pair,
+and `<batch-id>-<platform>-astra` / `-sol` hold their separate records. Read the
+actual `goal_achieved` and `partial_success` outcomes and protocol-match result;
+process completion alone is not task success. A single batch does not establish
+a general model performance ranking.
+
+The host-only developer answer key is stored in
+[control_task_solutions.json](reference_host/control_task_solutions.json) and
+[control_task_solutions.md](reference_host/control_task_solutions.md). These are
+feasibility references, not model-authored results. The model-facing tools expose
+only their bounded controller interface and owned observations/images; they
+cannot open these files or browse the repository. Do not include the answer key
+in model prompts or evidence packages.
+
+API profiles use the existing ignored `.env` (`OPENAI_API_KEY`, with both
+`ASTRA_REASONING_EFFORT=max` and `SOL_REASONING_EFFORT=max`). `max` is the actual
+API value used. See [the tooling guide](docs/ASTRA_TOOLING.md) for individual pair
+commands, artifacts and configuration.
+
+## Historical simulator and experiment context
+
+Everything below documents retained earlier work. The current testing workflow
+is the four-task controller comparison above.
+
 The [cargo-turn demo](simulator/CARGO_DEMO.md) follows a marked 90-degree bend
 with a load that can physically fall from the trolley. [Watch the animation](docs/cargo-curve-demo/animation.mp4)
 or double-click `launch_cargo_demo.command`. A separate GPT-6 investigation
@@ -42,70 +148,8 @@ which tools it used, the exact source changes, and measured prediction errors.
 Check that run's report for its outcome; having the loop implemented does not
 establish that a repair succeeded.
 
-## Astra tooling for car, drone and robot dog
 
-The new [tooling guide](docs/ASTRA_TOOLING.md) covers all **19 presets** for the
-teammate's new car, drone and robot dog, including their demos. It documents public
-inspection, diagnostic experiments, isolated Python model editing, targeted
-component maintenance and fresh-specimen verification. **Astra and Sol run in
-parallel**, each with a separate conversation, simulation and editable source.
-Both use the highest documented API effort, **`max`**. This implements the
-requested highest-effort comparison; `ultra` is not a documented API value.
-
-```sh
-# List supported presets without starting a simulation or API investigation.
-.venv/bin/python -m investigation.platform_run --list-scenarios
-
-# Start a matched pair with recorded frames.
-.venv/bin/python -m investigation.platform_pair --platform drone --scenario drone_rotor_loss --output runs/drone-pair-001
-```
-
-Use `--platform drone` or `--platform quadruped` with a new output directory for
-the other machines. `--scenario PRESET` selects a listed preset belonging to that
-platform, such as `car_demo`, `drone_demo`, or `quadruped_demo`; omitting it selects
-the platform's default incident. A repair receipt is followed by measured checks;
-model edits and physical maintenance are recorded separately. Full-source
-replacement with a current hash avoids the unified-diff formatting issue observed
-in the first comparison. The original brake-fade workflow remains available below.
-
-## Open the dashboard
-
-From the repository root, with the [Python environment](#setup-and-checks) installed
-and Node.js/npm available:
-
-```sh
-cd frontend
-npm ci
-npm run build
-cd ..
-.venv/bin/python -m dashboard
-```
-
-Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)** (`localhost:8765` also works).
-The dashboard follows the original scenario, two model checkpoint tracks, and
-the final Original/Astra/Sol replay. Each checkpoint separates the stated reason,
-attempted action, accepted changes and measured outcome. Physical changes show
-exact before/after parameters; Python changes show source diffs. Playback uses
-actual recorded frames and a shared simulation clock.
-
-Choose **New car**, **Drone**, or **Robot dog**, select a preset, then click
-**Run Astra + Sol**. This starts two concurrent API investigations with the
-configured key, each with **16 API requests** and a **1,800-second investigation
-budget**. One comparison runs at a time. Both models receive matching public
-evidence, tools and budgets. Final outcomes come from fresh controlled probes;
-an applied action or completed process alone is not a successful repair.
-Opening an existing run does not start another API investigation. Full local run
-records and replay frames live under ignored `runs/`; the compact comparison and
-frozen components below are shared in Git.
-
-For older braking runs launched from the terminal, generate replay media separately;
-replace `COMPLETED_RUN_ID` with the directory name under `runs/`:
-
-```sh
-.venv/bin/python -m dashboard.media runs/COMPLETED_RUN_ID
-```
-
-## Experiment records
+## Historical experiment records
 
 The [first live Astra/medium experiment](docs/astra-pilot-20260910/README.md)
 produced an actual stateful Python repair. Reserved-case mean error fell from
@@ -132,7 +176,7 @@ The optional `--developer-check` component in the simulator comparison remains a
 **manually authored, reference-informed solvability check**. It is separate from
 the API investigations below.
 
-## Run an investigation from the terminal
+## Legacy braking investigation from the terminal
 
 The default profile is **`astra-max`**, which uses **`gpt-6-astra` with `max`
 reasoning** through the OpenAI Responses API. Select **`--profile sol-max`** to
@@ -240,7 +284,7 @@ agent submission. API failures and partial runs retain their recorded evidence
 and source changes. The developer-written check is never substituted for an
 API-authored repair.
 
-## Start on this Mac
+## Legacy simulator commands on this Mac
 
 The local `.venv` is installed. From this repository:
 
@@ -276,7 +320,7 @@ and contact instead of inventing a full stop. `--frames --camera chase` also
 records timestamped PNGs, including conditioning. Long conditioning/recovery
 runs and frame recording can take a few minutes.
 
-## Edit and run the Python component
+## Legacy Python brake component
 
 Start from `candidate/wheel_actuator.py`. Its initial state is empty and its
 brake capacities are fixed. Keep the four functions in the
@@ -303,7 +347,7 @@ candidate replays the exact observable command/reset timeline on its own car;
 it receives neither reference temperature nor private torque diagnostics.
 A reposition preserves the component's history through its explicit reset hook.
 
-## Other car scenarios and live controls
+## Legacy car scenarios and live controls
 
 ```sh
 .venv/bin/python -m simulator list
@@ -355,12 +399,12 @@ for reading engine source. Execution uses the Python wheel and requires no C++
 build or submodule initialization. On macOS, use `mjpython` for native viewing as
 explained in the official [MuJoCo Python documentation](https://mujoco.readthedocs.io/en/stable/python.html).
 
-The candidate worker currently requires macOS `sandbox-exec` and fails closed on
+The legacy Python-component candidate worker currently requires macOS `sandbox-exec` and fails closed on
 unsupported hosts. Reference-only car runs work with standard MuJoCo bindings;
 Linux/Windows candidate execution needs an enforced isolation backend. See
 [worker limits](component_worker/README.md). The worker cannot read the repository
 or API credentials, import the engine, access the network, or create processes.
-The investigation API exposes only the seven broker tools, with no remote shell
+The legacy braking investigation API exposes only its bounded broker tools, with no remote shell
 or direct filesystem tools. The local trusted host owns engine execution,
 source versioning, private reference data, and evaluation.
 

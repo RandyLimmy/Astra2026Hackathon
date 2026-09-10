@@ -18,6 +18,25 @@ IMPACT_SPEED_THRESHOLD = 1.0
 EFFECT_SEED = 2048
 PARCEL_DROP = .20
 PARCEL_HALF_HEIGHT = .09
+UNLOADED_CLEARANCE_ALTITUDE = .55
+DEPARTURE_SUPPORT_RADIUS = .65
+DEPARTURE_SUPPORT_MAX_SPEED = .15
+DEPARTURE_SUPPORT_MAX_TILT = 10.
+LANDING_GEAR_GEOMS = frozenset(f"leg_{index}" for index in range(4))
+
+
+def _is_initial_departure_support(*, phase, parcel_attached, cleared, position,
+                                 destination, speed, tilt, contact_geoms) -> bool:
+    """Allow gentle landing-gear support while taking off again from B.
+
+    A contact-free integration step can be a tiny ground-support bounce. The
+    allowance ends only after the same .55 m clearance used for initial liftoff.
+    It never exempts an impact, airframe contact or a later return to the floor.
+    """
+    return bool(phase == "unloaded_climb" and not parcel_attached and not cleared
+                and np.linalg.norm(np.asarray(position)[:2] - np.asarray(destination)[:2]) <= DEPARTURE_SUPPORT_RADIUS
+                and speed <= DEPARTURE_SUPPORT_MAX_SPEED and tilt <= DEPARTURE_SUPPORT_MAX_TILT
+                and contact_geoms and set(contact_geoms) <= LANDING_GEAR_GEOMS)
 
 
 def _ease(value: float) -> float:
@@ -110,11 +129,15 @@ class DeliverySimulation(Simulation):
         self.voltage = 1.
         self.command_mode = "developer_feasibility" if self.config.delivery_controller == "feasibility" else "nominal_delivery"
         self.departed = False
+        self.unloaded_departed = False
+        self.unloaded_liftoff_time: float | None = None
         self.ground_contact = False
         self.crash_event: dict | None = None
         self.release_state: dict | None = None
         self.contact_steps = 0
         self.in_flight_body_contacts = 0
+        self.controlled_departure_contact_steps = 0
+        self.first_forbidden_contact: dict | None = None
         self.max_tilt = 0.
         self.max_altitude = .30
         self.min_altitude = .30
@@ -159,6 +182,16 @@ class DeliverySimulation(Simulation):
             body_contact |= int(self.model.geom_bodyid[other]) == self.focus_body
             parcel_contact |= int(self.model.geom_bodyid[other]) == self.parcel_body
         return body_contact, parcel_contact
+
+    def _body_contact_geoms(self) -> list[str]:
+        names = set()
+        for contact in self.data.contact:
+            if self.ground not in contact.geom:
+                continue
+            other = int(contact.geom[1] if contact.geom[0] == self.ground else contact.geom[0])
+            if int(self.model.geom_bodyid[other]) == self.focus_body:
+                names.add(mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, other) or f"geom_{other}")
+        return sorted(names)
 
     def release_parcel(self) -> bool:
         """Unlatch only supported, slow cargo at B; retain every pose and velocity.
@@ -323,15 +356,34 @@ class DeliverySimulation(Simulation):
         if not self.departed and altitude > .55 and not parcel_contact and not body_contact:
             self.departed = True
             self._event("liftoff", "Parcel and drone clear the ground", position=self.data.qpos[:3].tolist())
+        if (self.phase == "unloaded_climb" and not self.attached and not self.unloaded_departed
+                and altitude > UNLOADED_CLEARANCE_ALTITUDE and not body_contact):
+            self.unloaded_departed = True
+            self.unloaded_liftoff_time = self.elapsed
+            self._event("unloaded_liftoff", "Drone clears the delivery pad", phase=self.phase,
+                        position=self.data.qpos[:3].tolist())
         if self.departed and tilt > 30:
             self._event("first_instability", "Large visible tilt", is_failure=True, position=self.data.qpos[:3].tolist())
+        impact_speed = float(np.linalg.norm(incoming_velocity))
         if body_contact:
             self.contact_steps += 1
             self.ground_contact = True
             controlled_pad = (self.phase in ("approach", "placement") and abs(self.data.qpos[0] - self.config.flight_distance) < .65) or (self.phase == "landing" and np.linalg.norm(self.data.qpos[:2]) < .5)
+            contact_geoms = self._body_contact_geoms()
+            departure_support = _is_initial_departure_support(
+                phase=self.phase, parcel_attached=self.attached, cleared=self.unloaded_departed,
+                position=self.data.qpos[:3], destination=[self.config.flight_distance, 0.],
+                speed=impact_speed, tilt=tilt, contact_geoms=contact_geoms)
+            if departure_support:
+                self.controlled_departure_contact_steps += 1
+                controlled_pad = True
             if self.departed and not controlled_pad:
                 self.in_flight_body_contacts += 1
-        impact_speed = float(np.linalg.norm(incoming_velocity))
+                if self.first_forbidden_contact is None:
+                    self.first_forbidden_contact = self._event(
+                        "first_forbidden_contact", "Drone floor contact outside allowed pad support",
+                        is_failure=True, phase=self.phase, position=self.data.qpos[:3].tolist(),
+                        contact_geoms=contact_geoms, speed_m_s=impact_speed, tilt_degrees=tilt)
         if (self.crash_event is None and self.departed and body_contact
                 and impact_speed > IMPACT_SPEED_THRESHOLD and (tilt > 25 or incoming_velocity[2] < -.8)):
             self.crash_event = self._event("crash", "Drone ground impact", is_failure=True,
@@ -370,6 +422,9 @@ class DeliverySimulation(Simulation):
                             "target_position": self.target.tolist()},
                 "altitude": float(self.data.qpos[2]), "tilt_degrees": self._tilt(),
                 "ground_contact": body_contact, "parcel_contact": parcel_contact,
+                "unloaded_departed": self.unloaded_departed,
+                "controlled_departure_contact_steps": self.controlled_departure_contact_steps,
+                "in_flight_body_contacts": self.in_flight_body_contacts,
                 "parcel_position": self.data.xpos[self.parcel_body].tolist(), "parcel_attached": self.attached,
                 "mission": {"origin": [0., 0., 0.], "destination": [self.config.flight_distance, 0., 0.],
                             "completed": self.completed}}
@@ -385,7 +440,9 @@ class DeliverySimulation(Simulation):
                 "warning_counts": self.data.warning.number.tolist()}
 
     def summary(self) -> dict:
-        outcome = "mission_complete" if self.completed else "crashed" if self.crash_event else "mission_timeout" if self.finished else "incomplete_mission"
+        outcome = ("mission_complete" if self.completed else "crashed" if self.crash_event
+                   else "contact_violation" if self.finished and self.in_flight_body_contacts
+                   else "mission_timeout" if self.finished else "incomplete_mission")
         metrics = {"final_position": self.data.qpos[:3].tolist(), "final_altitude": float(self.data.qpos[2]),
                    "final_speed": float(np.linalg.norm(self.data.qvel[:3])),
                    "min_altitude": self.min_altitude, "max_altitude": self.max_altitude,
@@ -393,6 +450,10 @@ class DeliverySimulation(Simulation):
                    "forward_progress_before_impact": self.max_forward_progress, "max_tilt_degrees": self.max_tilt,
                    "ground_contact": self.ground_contact, "contact_steps": self.contact_steps,
                    "in_flight_body_contacts": self.in_flight_body_contacts,
+                   "controlled_departure_contact_steps": self.controlled_departure_contact_steps,
+                   "unloaded_departed": self.unloaded_departed,
+                   "unloaded_liftoff_time": self.unloaded_liftoff_time,
+                   "first_forbidden_contact_time": self.first_forbidden_contact["time"] if self.first_forbidden_contact else None,
                    "trial_duration": self.trial_time, "parcel_delivered": self.release_time is not None,
                    "parcel_distance_to_B": float(np.linalg.norm(self.data.xpos[self.parcel_body, :2] - [self.config.flight_distance, 0.])),
                    "parcel_settled_seconds": self.parcel_settled_time, "unloaded_flight": self.unloaded_flight,

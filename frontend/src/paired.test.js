@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { recordedFrames, clipDuration, physicalOutcome, replayFor } from './paired.js';
+import { TASKS, batchComparisonId, isCurrentTask, taskCatalog, recordedFrames, clipDuration, outcomePresentation, physicalOutcome, replayFor } from './paired.js';
 import { frameAt } from './replay.js';
 
 test('paired playback uses real elapsed time and retains short clips at their last recorded frame', () => {
@@ -21,9 +21,48 @@ test('paired playback uses real elapsed time and retains short clips at their la
 test('physical outcomes preserve unknowns and partial success without promoting prediction accuracy', () => {
   assert.equal(physicalOutcome({ predictive_success: true }), 'Not verified');
   assert.equal(physicalOutcome({ goal_achieved: false, cases: [{ goal_achieved: true }, { goal_achieved: false }] }), 'Partial success');
-  assert.equal(physicalOutcome({ goal_achieved: true }), 'Goal achieved');
-  assert.equal(physicalOutcome({ goal_achieved: false }), 'Goal not achieved');
+  assert.equal(physicalOutcome({ goal_achieved: true }), 'Task completed');
+  assert.equal(physicalOutcome({ goal_achieved: false }), 'Task failed');
+  assert.equal(physicalOutcome({ goal_achieved: false, partial_success: true }), 'Partial success');
+  assert.equal(physicalOutcome({ goal_achieved: false, aggregate: { partial_success: true } }), 'Partial success');
   assert.equal(physicalOutcome(null, true), 'Verification pending');
+});
+
+test('verified task status is primary while a recorded timeout and contact-step failure remain explicit', () => {
+  const result = outcomePresentation({ outcome: 'mission_timeout', metrics: { in_flight_body_contacts: 9 } },
+    { goal_achieved: false, partial_success: true });
+  assert.equal(result.label, 'Partial success');
+  assert.equal(result.termination, 'mission timeout');
+  assert.equal(result.unmetCriterion, 'In-flight contact criterion unmet: 9 recorded contact steps.');
+  assert.equal(outcomePresentation({ outcome: 'mission_complete' }, null).label, 'Not verified');
+});
+
+test('a completed scoring recheck displays current verified success without importing the old failure', () => {
+  const reassessment = { original_outcome: { goal_achieved: false, partial_success: true }, original_termination: 'mission_timeout' };
+  const result = outcomePresentation({ outcome: 'mission_complete', metrics: { in_flight_body_contacts: 0 } },
+    { goal_achieved: true, partial_success: false });
+  assert.equal(result.label, 'Task completed');
+  assert.equal(result.termination, '');
+  assert.equal(result.unmetCriterion, '');
+  assert.equal(physicalOutcome(reassessment.original_outcome), 'Partial success');
+});
+
+test('the testing catalog and recordings contain only the four approved task identities', () => {
+  const catalog = taskCatalog([
+    { id: 'legacy', scenarios: [{ id: 'car_demo' }] },
+    ...TASKS.map(task => ({ id: task.platform, scenarios: [{ id: `${task.platform}_demo` }, { id: task.scenario }] })),
+  ]);
+  assert.deepEqual(catalog.map(item => item.default_scenario), TASKS.map(item => item.scenario));
+  assert.ok(catalog.every(item => item.scenarios.length === 1));
+  for (const task of TASKS) {
+    assert.equal(isCurrentTask(task), true);
+    assert.equal(isCurrentTask({ manifest: task }), true);
+  }
+  assert.equal(isCurrentTask({ platform: 'drone', scenario: 'drone_rotor_loss' }), false);
+  assert.equal(isCurrentTask({ platform: 'car', scenario: 'car_demo' }), false);
+  assert.equal(isCurrentTask({ platform: 'quadruped', scenario: 'drone_delivery_imbalance' }), false);
+  assert.equal(batchComparisonId({ comparisons: { drone: 'batch-drone', warehouse: { id: 'batch-warehouse' } } }, 'drone'), 'batch-drone');
+  assert.equal(batchComparisonId(null, 'quadruped'), null);
 });
 
 test('the matched original replay comes from fresh verification rather than an earlier diagnostic', () => {

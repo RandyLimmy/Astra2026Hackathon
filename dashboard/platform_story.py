@@ -6,41 +6,27 @@ All replays and adjustments come from recorded host artifacts.
 
 import difflib
 from copy import deepcopy
+import hashlib
 import re
 
 
 CATALOG = {
-    "car": {"label": "New car", "default_scenario": "car_wheel_misalignment",
-            "goal": "Restore controlled driving and verify the same maneuver after repairs.",
-            "scenarios": [
-                ("car_postcrash_healthy", "Healthy control", "Barrier impact, recovery, and healthy controlled steering reference."),
-                ("car_steering_damage", "Steering damage", "Barrier impact leaves reduced steering rack response and a steering bias."),
-                ("car_wheel_misalignment", "Wheel misalignment", "A bent left front wheel mount changes toe during a slalom probe."),
-                ("car_suspension_damage", "Suspension damage", "Impact weakens the left front spring before a one-wheel bump probe."),
-                ("car_tire_pressure", "Tire pressure", "Impact changes left front tire radius/contact compliance: synthetic pressure proxy."),
-                ("car_demo", "Crash demo", "Visible approach, measured barrier impact, then a moderately weakened steering inspection."),
-            ]},
-    "drone": {"label": "Drone", "default_scenario": "drone_rotor_loss",
-              "goal": "Complete the flight maneuver while stable and airborne, then verify the repair.",
-              "scenarios": [
-                  ("drone_hover", "Healthy flight", "Healthy hover followed by a small, controlled translation probe."),
-                  ("drone_rotor_loss", "Rotor loss", "One rotor loses thrust after healthy flight; bounded control loses attitude."),
-                  ("drone_voltage_sag", "Voltage sag", "Supply voltage drops; all four rotors lose available thrust."),
-                  ("drone_payload", "Added payload", "An explicit co-moving payload pickup increases real mass and inertia."),
-                  ("drone_wind", "Wind", "A sustained crosswind force challenges nominal position prediction."),
-                  ("drone_delay", "Command delay", "Motor command transport delay appears before the translation probe."),
-                  ("drone_demo", "Flight demo", "Fly a visible course, lose some rotor thrust, then return to hover with a tracking residual."),
-              ]},
-    "quadruped": {"label": "Robot dog", "default_scenario": "quadruped_joint_weakness",
-                  "goal": "Complete the walking maneuver upright and verify restored support and motion.",
-                  "scenarios": [
-                      ("quadruped_walk", "Healthy walking", "Healthy articulated dog performs a controlled forward crawl."),
-                      ("quadruped_joint_weakness", "Joint weakness", "One knee actuator loses torque after normal walking."),
-                      ("quadruped_foot_slip", "Foot slip", "One foot loses contact friction during the same walking probe."),
-                      ("quadruped_leg_damage", "Leg damage", "One knee gains a stiff, bent rest configuration after damage."),
-                      ("quadruped_payload_shift", "Shifted payload", "An onboard payload slides sideways, shifting the center of mass."),
-                      ("quadruped_demo", "Walking and fall demo", "Walk a metre, lose one knee's support, stumble and fall, then simulate the aftermath."),
-                  ]},
+    "quadruped": {"label": "Robot dog", "default_scenario": "quadruped_gait_failure",
+                  "goal": "Complete the requested pace transition upright along the marked walking strip.",
+                  "scenarios": [("quadruped_gait_failure", "A faster walk",
+                                 "Adjust the gait controller to complete the original speed transition without falling.")]},
+    "drone": {"label": "Drone", "default_scenario": "drone_delivery_imbalance",
+              "goal": "Carry the parcel from A to B, place and release it, then return to A and land.",
+              "scenarios": [("drone_delivery_imbalance", "An uneven load",
+                             "Adjust flight control to complete the same loaded delivery and unloaded return.")]},
+    "warehouse": {"label": "Warehouse trolley", "default_scenario": "warehouse_curve_demo",
+                  "goal": "Complete the marked 90-degree route with cargo aboard and no ground impact.",
+                  "scenarios": [("warehouse_curve_demo", "The warehouse bend",
+                                 "Adjust the trolley route controller to carry its load around the same bend.")]},
+    "car": {"label": "Car braking", "default_scenario": "car_auto_brake_failure",
+            "goal": "Stop the conditioned car in the marked target zone with at least 2 m of clearance before the barrier.",
+            "scenarios": [("car_auto_brake_failure", "Stop before the wall",
+                           "Adjust braking control to stop in the target zone after the same brake-conditioning history.")]},
 }
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}\Z")
 IMAGE = re.compile(r"[A-Za-z0-9_-]+\.(?:jpg|jpeg|png|webp)\Z")
@@ -121,6 +107,7 @@ def replay(app, run_id, item, records):
               "id": item.get("id") or record.get("id") or parts[-2],
               "kind": item.get("kind") or record.get("kind"),
               "probe": record.get("probe"), "duration_s": record.get("duration_s"),
+              "actual_duration_s": record.get("actual_duration_s"),
               "summary": compact(record.get("summary")),
               "frames": []}
     base = parts[:-2]
@@ -143,6 +130,63 @@ def replay(app, run_id, item, records):
     return result
 
 
+def _verification(value, prior):
+    aggregate = value.get("aggregate") or {}
+    prior_cases = {case.get("probe"): case for case in prior.get("cases", []) if isinstance(case, dict)}
+    cases = [{**prior_cases.get(case.get("probe"), {}), **compact(case)}
+             for case in value.get("cases", []) if isinstance(case, dict)]
+    return {**prior, "status": "completed",
+            "goal_achieved": aggregate.get("goal_achieved", prior.get("goal_achieved")),
+            "predictive_success": aggregate.get("predictive_success", prior.get("predictive_success")),
+            "partial_success": aggregate.get("partial_success", prior.get("partial_success")),
+            "aggregate": compact(aggregate), "cases": cases}
+
+
+def _reassessment(app, run_id, records):
+    """Accept a host recheck only when it names this exact frozen run and replay."""
+    from .server import MAX_FILE_BYTES, RequestError, read_json
+    warning = "Saved scorer reassessment was ignored because its provenance or owned recording could not be verified."
+    try:
+        path = app.artifact(run_id, "evaluation", "reassessment.json")
+        if not path.is_file():
+            return None, None, None
+        saved = read_json(path)
+        if not isinstance(saved, dict) or saved.get("kind") != "control_task_reassessment":
+            return None, None, warning
+        def digest(*parts):
+            artifact = app.artifact(run_id, *parts)
+            if not artifact.is_file() or artifact.stat().st_size > MAX_FILE_BYTES:
+                return None
+            return hashlib.sha256(artifact.read_bytes()).hexdigest()
+        original_hash = digest("evaluation", "result.json")
+        controller_hash = digest("broker", "submission", "controller.json")
+        original_result = read_json(app.artifact(run_id, "evaluation", "result.json"))
+        updated = saved.get("result")
+        descriptor = saved.get("replay")
+        if (original_hash is None or controller_hash is None or not isinstance(original_result, dict)
+                or saved.get("original_result_sha256") != original_hash
+                or saved.get("controller_sha256") != controller_hash
+                or not isinstance(updated, dict) or updated.get("source_sha256") != controller_hash
+                or not isinstance(updated.get("aggregate"), dict)
+                or type(updated["aggregate"].get("goal_achieved")) is not bool
+                or not isinstance(updated.get("cases"), list)
+                or not updated["cases"] or any(not isinstance(case, dict) for case in updated["cases"])
+                or not isinstance(descriptor, dict) or descriptor.get("kind") != "after"):
+            return None, None, warning
+        parts = record_parts(descriptor.get("record_path"))
+        if parts is None or parts[:2] != ["broker", "verification"]:
+            return None, None, warning
+        record = records.get(descriptor["record_path"], {})
+        if (record.get("source_sha256") != controller_hash
+                or descriptor.get("id") != record.get("id")
+                or descriptor.get("probe") != record.get("probe")):
+            return None, None, warning
+        resolved = replay(app, run_id, descriptor, records)
+        return (saved, resolved, None) if resolved is not None else (None, None, warning)
+    except (OSError, RequestError, ValueError, TypeError):
+        return None, None, warning
+
+
 def story(app, run_id, summary):
     from .server import read_json, read_text, read_events
     saved = read_json(app.artifact(run_id, "story.json"))
@@ -156,15 +200,8 @@ def story(app, run_id, summary):
     if not isinstance(verification, dict):
         verification = read_json(app.artifact(run_id, "broker", "verification_result.json"))
     if isinstance(verification, dict):
-        aggregate = verification.get("aggregate") or {}
         prior = result.get("verification") or {}
-        prior_cases = {case.get("probe"): case for case in prior.get("cases", []) if isinstance(case, dict)}
-        cases = [{**prior_cases.get(case.get("probe"), {}), **compact(case)}
-                 for case in verification.get("cases", []) if isinstance(case, dict)]
-        result["verification"] = {**prior, "status": "completed",
-                                  "goal_achieved": aggregate.get("goal_achieved", prior.get("goal_achieved")),
-                                  "predictive_success": aggregate.get("predictive_success", prior.get("predictive_success")),
-                                  "aggregate": compact(aggregate), "cases": cases}
+        result["verification"] = _verification(verification, prior)
     else:
         result.setdefault("verification", {"status": "pending", "goal_achieved": None})
     records = _records(app, run_id)
@@ -178,20 +215,41 @@ def story(app, run_id, summary):
     if not result["replays"]:
         result["replays"] = [value for path, record in records.items()
                              if (value := replay(app, run_id, {"record_path": path, "kind": record.get("kind")}, records))]
-    original = read_text(app.artifact(run_id, "broker", "versions", "v000", "model.py"))
-    final = read_text(app.artifact(run_id, "broker", "submission", "model.py"))
+    reassessment, reassessed_replay, warning = _reassessment(app, run_id, records)
+    if reassessment is not None:
+        result["original_verification"] = deepcopy(result["verification"])
+        updated = reassessment["result"]
+        result["verification"] = _verification(updated, result["verification"])
+        original_cases = verification.get("cases", []) if isinstance(verification, dict) else []
+        original_after = original_cases[0].get("after", {}) if original_cases and isinstance(original_cases[0], dict) else {}
+        original_after = original_after if isinstance(original_after, dict) else {}
+        result["reassessment"] = {
+            "reason": reassessment.get("reason"), "evaluated_at": reassessment.get("evaluated_at"),
+            "original_outcome": compact(verification.get("aggregate", {})),
+            "original_termination": original_after.get("summary", {}).get("outcome"),
+        }
+        if isinstance(updated.get("reassessment_criteria"), dict):
+            result["reassessment"]["criteria"] = compact(updated["reassessment_criteria"])
+        result["replays"] = [item for item in result["replays"] if item.get("kind") != "after"] + [reassessed_replay]
+        if isinstance(updated.get("action_summary"), dict):
+            result["action_summary"] = compact(updated["action_summary"])
+    elif warning:
+        result["reassessment_warning"] = warning
+    filename = "controller.json" if summary["metadata"].get("task_kind") == "controller_repair" else "model.py"
+    original = read_text(app.artifact(run_id, "broker", "versions", "v000", filename))
+    final = read_text(app.artifact(run_id, "broker", "submission", filename))
     if final is None:
         versions = app.artifact(run_id, "broker", "versions")
         if versions.is_dir():
             for version in sorted(versions.iterdir(), reverse=True):
                 if re.fullmatch(r"v\d{3}", version.name) and not version.is_symlink():
-                    final = read_text(app.artifact(run_id, "broker", "versions", version.name, "model.py"))
+                    final = read_text(app.artifact(run_id, "broker", "versions", version.name, filename))
                     if final is not None:
                         break
-    result["source"] = {"original": original, "current": final, "diff": ""}
+    result["source"] = {"original": original, "current": final, "diff": "", "filename": filename}
     if original is not None and final is not None:
         result["source"]["diff"] = "".join(difflib.unified_diff(original.splitlines(keepends=True),
-            final.splitlines(keepends=True), fromfile="original/model.py", tofile="current/model.py"))
+            final.splitlines(keepends=True), fromfile=f"original/{filename}", tofile=f"current/{filename}"))
     result["metrics"] = {"api_requests": summary["api_requests"], "tool_calls": summary["tool_calls"],
                          "duration_s": summary["metadata"].get("duration_s"),
                          "usage": summary["metadata"].get("usage"),

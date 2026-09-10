@@ -27,7 +27,8 @@ function useResource(path, interval = 0) {
   }, [path, interval, revision]);
   return { ...(state.path === path ? state : { data: null, loading: Boolean(path), error: '' }), refresh };
 }
-export const useScenarios = () => useResource('/api/scenarios');
+export const useScenarios = () => useResource('/api/scenarios', 10000);
+export const useBatches = () => useResource('/api/batches', 3000);
 export const useComparisons = () => useResource('/api/comparisons', 3000);
 export const useComparison = id => useResource(id ? comparisonPath(id) : null, 2500);
 

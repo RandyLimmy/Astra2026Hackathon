@@ -15,6 +15,8 @@ KINDS = {"apply_repair": "repair", "replace_model_source": "model_edit",
          "restore_model_version": "model_edit", "run_experiment": "experiment",
          "run_model": "prediction", "check_repair": "verification",
          "run_regression_suite": "verification", "submit_result": "submission"}
+KINDS.update(replace_controller="controller_edit", run_trial="experiment", inspect_controller="inspection",
+             view_frames="inspection")
 
 
 def atomic_json(path, value):
@@ -40,8 +42,8 @@ class Story:
     def __init__(self, root, platform, predeclared):
         self.root = Path(root).resolve()
         self.path = self.root / "story.json"
-        self.goal = {"title": GOALS[platform],
-                     "criteria": [predeclared["physical_goal"], predeclared["prediction_goal"]]}
+        self.goal = {"title": predeclared.get("goal", GOALS.get(platform, "Complete the declared task.")),
+                     "criteria": [predeclared[key] for key in ("physical_goal", "prediction_goal") if predeclared.get(key)]}
         self.platform = platform
         self.checkpoints = []
         self.replays = []
@@ -88,7 +90,7 @@ class Story:
     def finish(self, entry, result, *, before=None, after=None, source_diff=None):
         if not result.get("ok"):
             entry.update(stage="rejected", error=result.get("error"))
-        elif entry["kind"] in {"repair", "model_edit"}:
+        elif entry["kind"] in {"repair", "model_edit", "controller_edit"}:
             entry["stage"] = "applied"
         elif entry["kind"] == "verification":
             cases = result.get("cases", [result])
@@ -118,9 +120,10 @@ class Story:
     def action_summary(self):
         repairs = [row for row in self.checkpoints if row["kind"] == "repair"]
         edits = [row for row in self.checkpoints if row["kind"] == "model_edit"]
+        controllers = [row for row in self.checkpoints if row["kind"] == "controller_edit"]
         applied = lambda rows: sum(row["stage"] == "applied" for row in rows)
-        attempted = bool(repairs or edits)
-        changed = bool(applied(repairs) + applied(edits))
+        attempted = bool(repairs or edits or controllers)
+        changed = bool(applied(repairs) + applied(edits) + applied(controllers))
         if not attempted:
             status = "diagnosed_but_no_fix_attempted" if self.initial_mismatch and (self.explanations or any(
                 row["kind"] == "submission" and row["stage"] == "completed" for row in self.checkpoints)) else "no_fix_attempted"
@@ -132,6 +135,7 @@ class Story:
             status = "goal_achieved" if self.verification["goal_achieved"] else "applied_but_goal_not_achieved"
         return {"repair_attempts": len(repairs), "repairs_applied": applied(repairs),
                 "model_edit_attempts": len(edits), "model_edits_applied": applied(edits),
+                "controller_edit_attempts": len(controllers), "controller_edits_applied": applied(controllers),
                 "failed_attempts": sum(row["stage"] in {"rejected", "failed"} for row in self.checkpoints),
                 "fix_attempted": attempted, "change_applied": changed, "status": status}
 

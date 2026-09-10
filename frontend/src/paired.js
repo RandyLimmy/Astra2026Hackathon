@@ -1,18 +1,50 @@
 import { numeric } from './api.js';
 
 export const AGENTS = [{ id: 'astra', label: 'Astra' }, { id: 'sol', label: 'Sol' }];
+export const TASKS = [
+  { platform: 'quadruped', scenario: 'quadruped_gait_failure', label: 'Robot dog' },
+  { platform: 'drone', scenario: 'drone_delivery_imbalance', label: 'Drone' },
+  { platform: 'warehouse', scenario: 'warehouse_curve_demo', label: 'Warehouse train' },
+  { platform: 'car', scenario: 'car_auto_brake_failure', label: 'Car braking' },
+];
+export function isCurrentTask(record) {
+  const source = record?.manifest ?? record;
+  return TASKS.some(task => task.scenario === source?.scenario && task.platform === source?.platform);
+}
+export function taskCatalog(platforms = []) {
+  return TASKS.flatMap(task => {
+    const platform = platforms.find(item => item.id === task.platform);
+    const scenario = platform?.scenarios?.find(item => item.id === task.scenario);
+    return platform && scenario ? [{ ...platform, label: task.label, default_scenario: task.scenario, scenarios: [scenario] }] : [];
+  });
+}
+export function batchComparisonId(batch, platform) {
+  const entry = batch?.comparisons?.[platform];
+  return typeof entry === 'string' ? entry : entry?.id || entry?.comparison_id || null;
+}
 export const comparisonPath = id => `/api/comparisons/${encodeURIComponent(id)}`;
 export const readable = value => typeof value === 'string' ? value.replaceAll('_', ' ') : '';
 export const formatValue = value => value == null ? 'Not recorded' : typeof value === 'object' ? JSON.stringify(value) : String(value);
 export const count = value => numeric(value) ? value.toLocaleString() : '—';
 export const yesNo = value => value === true ? 'Yes' : value === false ? 'No' : 'Not verified';
-export const goalOutcome = value => value === true ? 'Goal achieved' : value === false ? 'Goal not achieved' : 'Not verified';
+export const goalOutcome = value => value === true ? 'Task completed' : value === false ? 'Task failed' : 'Not verified';
 export function physicalOutcome(verification, active = false) {
-  if (verification?.goal_achieved === true) return 'Goal achieved';
+  if (verification?.goal_achieved === true) return 'Task completed';
   const outcomes = (verification?.cases ?? []).map(item => item.goal_achieved);
-  if (verification?.goal_achieved === false && outcomes.some(value => value === true)) return 'Partial success';
-  if (verification?.goal_achieved === false) return 'Goal not achieved';
+  if (verification?.goal_achieved === false && (verification.partial_success === true
+    || verification.aggregate?.partial_success === true || outcomes.some(value => value === true))) return 'Partial success';
+  if (verification?.goal_achieved === false) return 'Task failed';
   return active ? 'Verification pending' : 'Not verified';
+}
+export function outcomePresentation(summary, verification, active = false) {
+  const raw = summary?.outcome;
+  const contacts = summary?.metrics?.in_flight_body_contacts;
+  return {
+    label: physicalOutcome(verification, active),
+    termination: raw && !['mission_complete', 'goal_achieved', 'task_complete'].includes(raw) ? readable(raw) : '',
+    unmetCriterion: verification?.goal_achieved === false && Number.isInteger(contacts) && contacts > 0
+      ? `In-flight contact criterion unmet: ${contacts.toLocaleString()} recorded contact step${contacts === 1 ? '' : 's'}.` : '',
+  };
 }
 export const summaryOf = run => run?.summary ?? {};
 export const metadataOf = run => summaryOf(run).metadata ?? summaryOf(run);
@@ -37,7 +69,7 @@ export function clipDuration(replay) {
 }
 export function replayFor(run, kind, probe) {
   const candidates = (run?.story?.replays ?? []).filter(replay => replay.kind === kind && (!probe || replay.probe === probe));
-  return candidates.find(replay => replay.record_path?.startsWith('broker/verification/')) ?? candidates[0] ?? null;
+  return candidates.find(replay => replay.record_path?.startsWith('broker/verification/')) ?? candidates.at(-1) ?? null;
 }
 export function actionStatus(run) {
   const action = run?.story?.action_summary;

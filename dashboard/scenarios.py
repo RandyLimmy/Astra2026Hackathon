@@ -1,9 +1,18 @@
-"""Read only completed public dog/drone recordings; never launch a simulation."""
+"""Read the selected public task recordings; never launch a simulation."""
 
 import re
 
 
-from simulator.platforms.catalog import REPLAY_TASKS as SCENARIOS
+from simulator.platforms.catalog import REPLAY_TASKS
+
+
+SCENARIOS = {key: REPLAY_TASKS[key] for key in ("quadruped_gait_failure", "drone_delivery_imbalance")}
+SCENARIOS["warehouse_curve_demo"] = {
+    "title": "Warehouse trolley · the bend",
+    "description": "Follow the marked 90-degree route as the cargo slides from the deck.",
+    "objective": "Complete the marked route with cargo aboard and no ground impact.",
+}
+SCENARIOS["car_auto_brake_failure"] = REPLAY_TASKS["car_auto_brake_failure"]
 
 
 def media_path(app, scenario, run_id, parts):

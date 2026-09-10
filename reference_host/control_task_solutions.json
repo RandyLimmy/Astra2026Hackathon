@@ -1,0 +1,260 @@
+{
+  "schema_version": 1,
+  "kind": "developer_reference_solutions",
+  "recorded_on": "2026-09-10",
+  "purpose": "Known feasible controller candidates for the four fixed tasks. These are engineering references, not Astra or Sol results, and are not model inputs.",
+  "verification": "All four candidates succeeded in local physics checks. The warehouse candidate was reverified after upstream commit 99534df changed parcel/deck physics. The new car controller task was verified at its declared fixed 22 m/s approach speed. Dog/drone results remain from their earlier unchanged-world checks.",
+  "evaluation_rule": "Judge each model by fresh execution against the unchanged task criteria, not by equality with these parameter values. Other valid solutions may exist.",
+  "scenarios": {
+    "quadruped_gait_failure": {
+      "platform": "quadruped",
+      "baseline_controller": {
+        "rear_cadence_gain": 4.0
+      },
+      "reference_controller": {
+        "rear_cadence_gain": 1.8
+      },
+      "changes": {
+        "rear_cadence_gain": {
+          "before": 4.0,
+          "after": 1.8
+        }
+      },
+      "explanation": "Reduce the rear-leg gait-clock response to the speed increase so the original walking-speed schedule can finish without destabilizing the body.",
+      "fixed_task": "Original 18-second walk and speed increase; retain forward progress, requested-speed tracking, balance and contact criteria.",
+      "observed_baseline": {
+        "goal_achieved": false,
+        "fall_time_s": 13.540000000001191
+      },
+      "observed_reference": {
+        "goal_achieved": true,
+        "partial_success": false,
+        "full_task_completed": true,
+        "forward_distance_m": 1.9600078884354408,
+        "max_tilt_deg": 14.818117373781103,
+        "max_lateral_distance_m": 0.14822020867085992,
+        "final_mean_speed_m_s": 0.12264851940367176,
+        "body_contact_time_s": null
+      },
+      "verification_source": "Earlier bounded engineering feasibility check reported by the dog adapter author; boundary tests are in tests/test_control_dog.py. The full corrected trace was not saved."
+    },
+    "drone_delivery_imbalance": {
+      "platform": "drone",
+      "baseline_controller": {
+        "position_gain_xy": 3.0,
+        "position_gain_z": 8.0,
+        "velocity_gain_xy": 3.2,
+        "velocity_gain_z": 5.0,
+        "hover_attitude_gain": 3.5,
+        "route_attitude_gain": 0.9,
+        "attitude_damping": 0.48,
+        "yaw_gain": 0.8,
+        "yaw_damping": 0.18,
+        "trim_integral_gain": 2.0,
+        "trim_limit_nm": 0.95,
+        "vertical_integral_gain": 3.0,
+        "vertical_integral_limit_n": 8.0,
+        "trim_during_route": false,
+        "reset_trim_on_release": false,
+        "reset_trim_on_support": false
+      },
+      "reference_controller": {
+        "position_gain_xy": 3.0,
+        "position_gain_z": 8.0,
+        "velocity_gain_xy": 3.2,
+        "velocity_gain_z": 5.0,
+        "hover_attitude_gain": 3.5,
+        "route_attitude_gain": 3.5,
+        "attitude_damping": 0.48,
+        "yaw_gain": 0.8,
+        "yaw_damping": 0.18,
+        "trim_integral_gain": 2.0,
+        "trim_limit_nm": 1.4,
+        "vertical_integral_gain": 3.0,
+        "vertical_integral_limit_n": 8.0,
+        "trim_during_route": true,
+        "reset_trim_on_release": true,
+        "reset_trim_on_support": true
+      },
+      "changes": {
+        "route_attitude_gain": {
+          "before": 0.9,
+          "after": 3.5
+        },
+        "trim_limit_nm": {
+          "before": 0.95,
+          "after": 1.4
+        },
+        "trim_during_route": {
+          "before": false,
+          "after": true
+        },
+        "reset_trim_on_release": {
+          "before": false,
+          "after": true
+        },
+        "reset_trim_on_support": {
+          "before": false,
+          "after": true
+        }
+      },
+      "explanation": "Maintain attitude trim while traveling, strengthen route attitude feedback, allow adequate compensation, and clear accumulated trim when support or payload release changes the load.",
+      "fixed_task": "Take off at A with the parcel, release it supported and settled at B, fly back unloaded and land at A within 30 seconds, without in-flight body contact or a crash.",
+      "baseline_provenance": "The tested baseline is a public-feedback port of the nominal controller in the same original physical world. It retains the outbound crash but is not a bit-identical stock-controller replay.",
+      "observed_baseline": {
+        "goal_achieved": false,
+        "outcome": "crashed",
+        "crash_time_s_approx": 5.6
+      },
+      "observed_reference": {
+        "goal_achieved": true,
+        "partial_success": false,
+        "completion_time_s_approx": 26.49,
+        "in_flight_body_contacts": 0,
+        "parcel_released_and_settled": true,
+        "returned_unloaded_and_landed": true
+      },
+      "verification_source": "Previously executed tests/test_control_drone.py::test_controller_adjustment_completes_delivery_release_return_and_landing, plus the adapter author's recorded engineering summary."
+    },
+    "warehouse_curve_demo": {
+      "platform": "warehouse",
+      "baseline_controller": {
+        "schema_version": 1,
+        "target_speed_m_s": 1.6,
+        "acceleration_m_s2": 0.4,
+        "lookahead_m": 0.65
+      },
+      "reference_controller": {
+        "schema_version": 1,
+        "target_speed_m_s": 0.6,
+        "acceleration_m_s2": 0.4,
+        "lookahead_m": 0.65
+      },
+      "changes": {
+        "target_speed_m_s": {
+          "before": 1.6,
+          "after": 0.6
+        }
+      },
+      "explanation": "Reduce the commanded trolley speed so the cargo remains aboard through the 90-degree turn while still completing the original route within its deadline.",
+      "fixed_task": "Complete the original approximately 7.285-metre route in the full 17-second trial, satisfying endpoint, heading and route-following criteria with cargo on deck and no cargo-floor contact.",
+      "observed_baseline": {
+        "goal_achieved": false,
+        "partial_success": true,
+        "cargo_spilled": true,
+        "cargo_ground_impact_time_s": 5.92
+      },
+      "observed_reference": {
+        "goal_achieved": true,
+        "partial_success": false,
+        "full_task_completed": true,
+        "duration_s": 17.0,
+        "route_complete": true,
+        "cargo_retained": true,
+        "route_end_reached_s": 13.824,
+        "metrics": {
+          "elapsed": 17.0,
+          "trial_time": 17.0,
+          "position": [
+            4.2031954,
+            -3.5944227,
+            0.2398487
+          ],
+          "path_length_m": 7.393485,
+          "displacement_m": 5.5305268,
+          "max_speed_m_s": 0.6052546,
+          "max_tilt_rad": 0.0003507,
+          "heading_rad": -1.5669018,
+          "vehicle_upright": true,
+          "cargo_has_touched_floor": false,
+          "route_progress_m": 7.2849556,
+          "route_complete": true,
+          "cargo_retained": true,
+          "final_endpoint_error_m": 0.0064278,
+          "final_heading_error_rad": 0.0038945,
+          "max_route_error_m": 0.0987243,
+          "full_trial_completed": true
+        }
+      },
+      "verification_source": "Two new full physical trials on the merged 99534df scene, saved with complete baseline/reference telemetry and source hashes under runs/reference-warehouse-99534df. No model API calls were used for this feasibility check.",
+      "verified_against_upstream_commit": "99534df",
+      "verification_artifact": "runs/reference-warehouse-99534df/verification.json",
+      "recorded_source_sha256": {
+        "investigation/tasks/warehouse.py": "f9d416fcfb4387aaab6c5a9f959ae47abe0c7a2bc3e850896fcfe57876ea950f",
+        "simulator/platforms/warehouse.py": "932a818a789b91727c860dcd541e11e4aa4312cc600b733978e93b95399b55ce",
+        "simulator/platforms/warehouse_tracks.py": "d7d1697cb6bf44043f27d3f19091458c270a8b253654d2773fb5f42cd1b25e9b",
+        "simulator/assets/warehouse.xml": "722f714c6ba02e3ee36ce35d71fe05fbf0dc94fc0ddf5ae670fd46082bf2e30a"
+      }
+    },
+    "car_auto_brake_failure": {
+      "platform": "car",
+      "baseline_controller": {
+        "brake_trigger_x_m": 45.0,
+        "brake_command": 1.0
+      },
+      "reference_controller": {
+        "brake_trigger_x_m": 10.0,
+        "brake_command": 1.0
+      },
+      "changes": {
+        "brake_trigger_x_m": {
+          "before": 45.0,
+          "after": 10.0
+        }
+      },
+      "explanation": "Apply the same full brake pedal earlier so the physically conditioned car has enough distance to stop in the unchanged green target.",
+      "fixed_task": "Approach at 22 m/s after the original four physical conditioning cycles, and stop with the front bumper in x=86..98 m, at least 2 m before the wall at x=100 m. Remain below 0.1 m/s for one second and finish within 12 seconds without contact. Both controller candidates use this same fixed task.",
+      "baseline_provenance": "This controller task is calibrated at a fixed 22 m/s approach speed; the legacy 25 m/s failure replay remains unchanged. The physical car, four conditioning cycles, brake mechanics, wall and target are preserved.",
+      "legacy_feasibility_check": {
+        "initial_speed_m_s": 25.0,
+        "braking_from_trial_start": true,
+        "brake_command": 1.0,
+        "collision": true,
+        "impact_speed_m_s": 6.302774025544919,
+        "collision_time_s": 6.265999999999532
+      },
+      "observed_baseline": {
+        "goal_achieved": false,
+        "partial_success": false,
+        "metrics": {
+          "collision": true,
+          "impact_speed": 12.4332878,
+          "brake_start_x": 45.014118,
+          "brake_start_time": 1.956,
+          "stopping_distance": null,
+          "final_front_x": 99.4973032,
+          "final_speed": 0.0034728,
+          "bumper_clearance": 0.5026968,
+          "trial_duration": 7.154,
+          "conditioning_duration": 51.73,
+          "goal_reached": false,
+          "full_task_completed": true,
+          "stationary_duration_s": 1.076,
+          "initial_speed_m_s": 22.0
+        }
+      },
+      "observed_reference": {
+        "goal_achieved": true,
+        "partial_success": false,
+        "metrics": {
+          "collision": false,
+          "impact_speed": null,
+          "brake_start_x": 10.0085559,
+          "brake_start_time": 0.364,
+          "stopping_distance": 81.207981,
+          "final_front_x": 91.2165369,
+          "final_speed": 0.0038378,
+          "bumper_clearance": 8.7834631,
+          "trial_duration": 9.142,
+          "conditioning_duration": 51.73,
+          "goal_reached": true,
+          "full_task_completed": true,
+          "stationary_duration_s": 1.0,
+          "initial_speed_m_s": 22.0
+        }
+      },
+      "verification_source": "Focused baseline and reference physical trials through investigation.task_recording.record_task without frames or model API calls. Complete corrected public telemetry and source hashes are saved under runs/reference-car-green-zone-20260910; the original baseline RGB preview is recorded separately under runs/preview-control-car.",
+      "verification_artifact": "runs/reference-car-green-zone-20260910/verification.json"
+    }
+  }
+}

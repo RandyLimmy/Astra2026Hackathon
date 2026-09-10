@@ -1,6 +1,6 @@
 # Control tasks: observations and actuator interface
 
-This is the neutral interface for the recorded dog and parcel-delivery tasks.
+This is the neutral interface for the recorded dog, parcel-delivery and car tasks.
 It contains no diagnosed cause, private fixture parameters, or corrected policy.
 The host retains ownership of the physical world, initial conditions and goals.
 
@@ -96,6 +96,42 @@ altitude, tilt, actual contact flags, previous rotor commands, target position,
 parcel position/attachment state and mission state. Raw rotor control can use
 these observations and controller-owned state. Mission progress does not excuse
 an impact or permit teleporting the parcel.
+
+Normal landing and initial landing-gear support while taking off again from B
+are permitted. The latter allowance ends after unloaded clearance above 0.55 m;
+before then it requires the drone to remain within 0.65 m of B, at no more than
+0.15 m/s and 10 degrees of tilt, with only landing gear touching the floor.
+Off-pad contact, airframe contact, impacts and recontact after clearance remain
+violations. Public observations distinguish `controlled_departure_contact_steps`
+from `in_flight_body_contacts` and report `unloaded_departed`. Events identify
+unloaded liftoff and the first forbidden contact with its phase and measurements.
+A finished mission with forbidden contact reports `contact_violation`; an
+unfinished mission that exhausts its time without that violation reports
+`mission_timeout`.
+
+## Car braking control
+
+Task: stop the front bumper inside the green zone, x = 86–98 m, without touching
+the wall at x = 100 m. The controller task declares a 22 m/s approach after four
+physical acceleration/braking preparation cycles. Both the original controller
+and every candidate use this same setup and a 12-second approach deadline.
+The separate legacy replay retains its original 25 m/s approach.
+
+The editable controller contains `brake_trigger_x_m` (2–85 m) and
+`brake_command` (0.1–1, normalized pedal demand). It coasts until the measured
+`front_x` reaches the trigger, then latches braking for the rest of the approach.
+The latch resets for each fresh attempt. The physical step accepts only bounded
+`throttle` and `brake` pedals in [0, 1]; the controller cannot alter the world.
+
+Public evidence includes bumper position and wall clearance, speed,
+deceleration, wheel speeds, pedal commands, collision and stop events, and
+chase/overview/side camera images. A successful run must stop below 0.1 m/s for
+one second in the green zone with at least 2 m clearance and valid physics.
+A collision or a stop before the green zone does not complete the task.
+
+The shared task broker provides system/controller inspection, recorded
+telemetry and RGB reads, versioned controller replacement, full trials and
+frozen final verification for this task.
 
 ## Evidence and later GPT-6 integration
 
