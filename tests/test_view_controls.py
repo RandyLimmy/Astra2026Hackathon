@@ -148,6 +148,22 @@ class ViewControlTests(unittest.TestCase):
         self.assertIn("Wind force", "\n".join(settings_lines("drone_demo", wind_config)))
         self.assertNotIn("Rotor output", "\n".join(settings_lines("drone_demo", wind_config)))
 
+    def test_task_goal_and_failed_conclusion_replace_generic_completion(self):
+        sim = catalog.create("drone_hover", {"duration": .2})
+        control = ViewControls(sim.model, scenario="car_steering_drift")
+        task = {"objective": "Reach the green finish gate", "status": "FAILED - ROADSIDE COLLISION",
+                "detail": "Finish gate not reached; impact at 4.79 s"}
+        before = sim.data.qpos.copy(), sim.data.time
+        text = "\n".join(row[2] for row in control.texts(
+            elapsed=6.79, duration=6.79, phase="aftermath", paused=False, finished=True, task=task))
+        self.assertIn("GOAL\nReach the green finish gate", text)
+        self.assertIn("FAILED - ROADSIDE COLLISION", text)
+        self.assertIn("ATTEMPT ENDED", text)
+        self.assertNotIn("COMPLETE", text)
+        self.assertIn("Finish gate not reached", text)
+        np.testing.assert_array_equal(sim.data.qpos, before[0])
+        self.assertEqual(sim.data.time, before[1])
+
     def test_autoplay_and_camera_flag_use_the_same_viewer(self):
         sim = catalog.create("drone_hover", {"duration": .2})
         window = SimpleNamespace(cam=mujoco.MjvCamera(), lock=contextlib.nullcontext,

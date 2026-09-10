@@ -1,5 +1,11 @@
 # RealityPatch
 
+The [cargo failure demo](simulator/CARGO_DEMO.md) now animates a trolley whose
+restraint breaks under load, with a synchronized fixed-cargo prediction and an
+editable physics-model investigation for GPT-6. Double-click
+`launch_cargo_demo.command` to play the failure. Prepared animations contain no
+claimed GPT-6 repair; candidates must pass separate unseen evaluation.
+
 Three additional simulator platforms are available: **post-crash car damage**,
 **quadruped body faults**, and **quadrotor degradation**. They include sixteen
 presets, controlled probes, recordings and nominal-before-reality comparisons.

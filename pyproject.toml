@@ -31,8 +31,9 @@ include = ["sim*", "contracts*", "component_worker*", "reference_host*", "demo*"
 
 [tool.setuptools.package-data]
 sim = ["*.xml"]
-simulator = ["assets/*.xml", "assets/platforms/*.xml", "experiments/*.json", "public/*.xml", "public/*.json", "public/*.md", "private/*.json", "private/scenarios/*.json", "*.md"]
+simulator = ["assets/*.xml", "assets/*.html", "assets/platforms/*.xml", "experiments/*.json", "public/*.xml", "public/*.json", "public/*.md", "private/*.json", "private/scenarios/*.json", "*.md"]
 contracts = ["*.md"]
+candidate = ["*.json"]
 investigation = ["prompts/*.md"]
 
 [tool.pytest.ini_options]

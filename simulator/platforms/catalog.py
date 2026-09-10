@@ -2,7 +2,30 @@
 from dataclasses import asdict, fields, replace
 from importlib import import_module
 
-MODULES = ("car_damage", "quadruped", "drone", "warehouse")
+MODULES = ("car_damage", "car_steering", "car_braking", "quadruped", "drone", "warehouse")
+
+REPLAY_TASKS = {
+    "quadruped_gait_failure": {
+        "title": "Dog · a faster walk",
+        "description": "Watch the feet lose coordination as the requested pace increases.",
+        "objective": "Complete the requested speed transition while walking upright along the marked strip.",
+    },
+    "drone_delivery_imbalance": {
+        "title": "Drone · an uneven load",
+        "description": "Follow the loaded drone from takeoff through loss of balance and impact.",
+        "objective": "Carry the parcel from A to B, place and release it, then return unloaded to A and land.",
+    },
+    "car_steering_drift": {
+        "title": "Car · steering off course",
+        "description": "Follow the marked bend as the car crosses the lane boundary.",
+        "objective": "Follow the marked lane through the bend and cross the finish line.",
+    },
+    "car_auto_brake_failure": {
+        "title": "Car · braking too late",
+        "description": "Watch the automatic brake trigger engage before a positive-speed barrier collision.",
+        "objective": "Approach the barrier at the declared speed and stop before contact.",
+    },
+}
 
 
 def is_platform(name: str) -> bool:
@@ -19,7 +42,12 @@ def entries():
 
 
 def module_for(preset: str):
-    prefix = "car_damage" if preset.startswith("car_") else preset.split("_", 1)[0]
+    if preset.startswith("car_auto_brake_"):
+        prefix = "car_braking"
+    elif preset in ("car_steering_drift", "car_steering_nominal"):
+        prefix = "car_steering"
+    else:
+        prefix = "car_damage" if preset.startswith("car_") else preset.split("_", 1)[0]
     if prefix not in MODULES:
         raise ValueError(f"Unknown platform preset: {preset}")
     module = import_module(f"simulator.platforms.{prefix}")

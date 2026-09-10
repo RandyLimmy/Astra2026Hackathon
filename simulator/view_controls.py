@@ -73,6 +73,8 @@ def settings_lines(scenario: str, config) -> list[str]:
     result = []
     if "fault" in values and fault in ("healthy", "none"):
         result.append("Healthy reference")
+    elif platform == "warehouse" and fault == "cargo_breakaway":
+        result.append("Force-triggered restraint release")
     elif "fault_at" in values:
         label = "Impact arming" if scenario.startswith("car_") else "Change scheduled"
         result.append(f"{label}: {values['fault_at']:g} s")
@@ -131,7 +133,7 @@ class ViewControls:
         return False
 
     def texts(self, *, elapsed: float, duration: float, phase: str, paused: bool,
-              finished: bool, detail: str = "") -> list[tuple]:
+              finished: bool, detail: str = "", task: dict | None = None) -> list[tuple]:
         state = "COMPLETE" if finished else "READY" if paused and elapsed < 1e-8 else "PAUSED" if paused else "PLAYING"
         progress = min(1., max(0., elapsed / duration)) if duration > 0 and not finished else 1.
         filled = round(24 * progress)
@@ -139,22 +141,30 @@ class ViewControls:
         title = self.scenario.replace("_", " ").upper()
         stage = phase.replace("_", " ").capitalize()
         settings = "\n".join(settings_lines(self.scenario, self.config))
+        if task:
+            stage = task["status"]
+            settings = "GOAL\n" + task["objective"]
+            detail = task["detail"]
+            if finished:
+                state = "ATTEMPT ENDED"
         action = "Space: replay from start" if finished else "Space: play the full scenario" if state == "READY" else "Space: pause / resume"
+        controls = ("Space: play / pause / replay\nN: full reset | R: retain state\nC: camera | -/+: speed | Esc: close"
+                    if task else f"{action}\nN: full replay  |  R: repeat with damage  |  Esc: close\nC: camera  |  - / +: playback speed")
         return [
             (mujoco.mjtFont.mjFONT_SHADOW, mujoco.mjtGridPos.mjGRID_TOPLEFT,
              f"{title}\n{state}  |  {elapsed:.1f} / {duration:.1f} s\n{stage}\n{bar}", ""),
             (mujoco.mjtFont.mjFONT_SHADOW, mujoco.mjtGridPos.mjGRID_TOPRIGHT,
              f"{self.speedup:g}x playback  |  {self.camera} camera\n{settings}", ""),
             (mujoco.mjtFont.mjFONT_SHADOW, mujoco.mjtGridPos.mjGRID_BOTTOMLEFT,
-             f"{action}\nN: full replay  |  R: repeat with damage  |  Esc: close\nC: camera  |  - / +: playback speed", ""),
+             controls, ""),
             (mujoco.mjtFont.mjFONT_SHADOW, mujoco.mjtGridPos.mjGRID_BOTTOMRIGHT,
              detail or "Physical simulation\nNominal controller; no automatic model repair", ""),
         ]
 
     def update(self, viewer, *, position, elapsed: float, duration: float, phase: str,
-               paused: bool, finished: bool, detail: str = "") -> None:
+               paused: bool, finished: bool, detail: str = "", task: dict | None = None) -> None:
         if mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, self.camera) < 0:
             with viewer.lock():
                 viewer.cam.lookat[:] = position
         viewer.set_texts(self.texts(elapsed=elapsed, duration=duration, phase=phase,
-                                  paused=paused, finished=finished, detail=detail))
+                                  paused=paused, finished=finished, detail=detail, task=task))

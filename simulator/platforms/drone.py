@@ -54,17 +54,22 @@ class Config:
     control_delay: float = 0.22
     flight_distance: float = 4.0
     flight_altitude: float = 2.8
+    payload_offset: float = 0.30
+    delivery_controller: str = "nominal"
 
     def __post_init__(self):
         if self.fault not in FAULTS:
             raise ValueError(f"fault must be one of {FAULTS}")
-        if self.probe not in ("hover", "maneuver", "showcase"):
-            raise ValueError("probe must be hover, maneuver or showcase")
+        if self.probe not in ("hover", "maneuver", "showcase", "delivery"):
+            raise ValueError("probe must be hover, maneuver, showcase or delivery")
+        if self.delivery_controller not in ("nominal", "feasibility"):
+            raise ValueError("delivery_controller must be nominal or feasibility")
         bounds = {"duration": (0.05, 120), "timestep": (0.0002, 0.005),
                   "fault_at": (0, 120), "rotor_effectiveness": (0, 1),
                   "voltage_ratio": (0.1, 1), "payload_mass": (0, 5),
                   "wind_force": (0, 20), "control_delay": (0, 1),
-                  "flight_distance": (2, 8), "flight_altitude": (2, 3.2)}
+                  "flight_distance": (2, 8), "flight_altitude": (2, 3.2),
+                  "payload_offset": (-0.35, 0.35)}
         for name, (low, high) in bounds.items():
             value = getattr(self, name)
             if (isinstance(value, bool) or not isinstance(value, (int, float))
@@ -86,6 +91,9 @@ PRESETS = {
     "drone_delay": {"fault": "delay"},
     "drone_demo": {"fault": "rotor_loss", "probe": "showcase", "duration": 20.,
                    "fault_at": 8., "rotor_effectiveness": .72},
+    "drone_delivery_imbalance": {"fault": "payload", "probe": "delivery", "duration": 30.,
+                                 "payload_mass": .36, "payload_offset": .30,
+                                 "flight_altitude": 2.2},
 }
 DESCRIPTIONS = {
     "drone_hover": "Healthy hover followed by a small, controlled translation probe.",
@@ -95,10 +103,17 @@ DESCRIPTIONS = {
     "drone_wind": "A sustained crosswind force challenges nominal position prediction.",
     "drone_delay": "Motor command transport delay appears before the translation probe.",
     "drone_demo": "Fly a visible course, lose some rotor thrust, then return to hover with a tracking residual.",
+    "drone_delivery_imbalance": "Carry an uneven parcel from A toward B; lose balance and crash.",
 }
 
 
 class Simulation:
+    def __new__(cls, config: Config = Config()):
+        if cls is Simulation and config.probe == "delivery":
+            from .drone_delivery import DeliverySimulation
+            return object.__new__(DeliverySimulation)
+        return object.__new__(cls)
+
     def __init__(self, config: Config = Config()):
         self.config = config
         path = Path(__file__).resolve().parents[1] / "assets" / "platforms" / "drone.xml"

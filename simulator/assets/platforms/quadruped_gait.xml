@@ -1,0 +1,16 @@
+<mujoco model="RealityPatch gait coordination task">
+  <!-- Reuse the identical articulated mechanics. All added floor marks are
+       presentation-only, with no collision or dynamic bodies. -->
+  <include file="quadruped.xml"/>
+  <worldbody>
+    <camera name="gait_side" pos="0.40 -3.2 1.05" xyaxes="1 0 0 0 0.251 0.968" fovy="34"/>
+    <camera name="gait_overview" pos="1.50 -2.50 1.60" xyaxes="0.882 0.471 0 -0.220 0.412 0.884" fovy="38"/>
+    <geom name="walking_strip_left" type="box" pos="0.9 0.48 0.002" size="1.5 0.012 0.001" contype="0" conaffinity="0" rgba="0.25 0.69 0.73 1"/>
+    <geom name="walking_strip_right" type="box" pos="0.9 -0.48 0.002" size="1.5 0.012 0.001" contype="0" conaffinity="0" rgba="0.25 0.69 0.73 1"/>
+    <geom name="distance_tick_start" type="box" pos="0 0 0.002" size="0.01 0.48 0.001" contype="0" conaffinity="0" rgba="0.43 0.54 0.58 1"/>
+    <geom name="distance_tick_half" type="box" pos="0.5 0 0.002" size="0.01 0.48 0.001" contype="0" conaffinity="0" rgba="0.43 0.54 0.58 1"/>
+    <geom name="distance_tick_one" type="box" pos="1 0 0.002" size="0.01 0.48 0.001" contype="0" conaffinity="0" rgba="0.43 0.54 0.58 1"/>
+    <geom name="distance_tick_one_half" type="box" pos="1.5 0 0.002" size="0.01 0.48 0.001" contype="0" conaffinity="0" rgba="0.43 0.54 0.58 1"/>
+    <geom name="distance_tick_two" type="box" pos="2 0 0.002" size="0.01 0.48 0.001" contype="0" conaffinity="0" rgba="0.43 0.54 0.58 1"/>
+  </worldbody>
+</mujoco>

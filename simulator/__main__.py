@@ -26,6 +26,7 @@ from .platforms import operator as platform_operator
 def _physics_arguments(parser):
     parser.add_argument("scenario", help="private operator preset; use list to see names")
     parser.add_argument("--config", type=Path, help="JSON object overlaid on the selected preset")
+    parser.add_argument("--controller", type=Path, help="dog gait controller JSON; changes control only")
     for flag, destination, help_text in (
         ("speed", "initial_speed", "initial speed in m/s"),
         ("brake", "brake", "brake pedal fraction [0,1]"),
@@ -79,6 +80,8 @@ def _parser():
 
 
 def _config(args):
+    if getattr(args, "controller", None) is not None:
+        raise ValueError("--controller applies to quadruped_gait_failure")
     if args.probe is not None or args.fault_at is not None:
         raise ValueError("--probe and --fault-at apply to car-damage, quadruped, drone and warehouse platforms")
     values = scenarios.load(args.scenario).to_dict()

@@ -38,11 +38,11 @@
     <body name="chassis" pos="0 0 0.242">
       <freejoint name="chassis_free"/>
       <geom name="chassis_geom" type="box" size="0.53 0.29 0.05" mass="22" rgba="0.07 0.58 0.69 1"/>
-      <geom class="visual" type="box" pos="0 0 0.11" size="0.48 0.31 0.02" rgba="0.14 0.21 0.27 1"/>
+      <geom name="cargo_deck" class="visual" type="box" pos="0 0 0.11" size="0.48 0.31 0.02" rgba="0.14 0.21 0.27 1"/>
       <geom class="visual" type="box" pos="0.535 0.18 0.015" size="0.008 0.055 0.022" rgba="1 0.94 0.6 1"/>
       <geom class="visual" type="box" pos="0.535 -0.18 0.015" size="0.008 0.055 0.022" rgba="1 0.94 0.6 1"/>
-      <geom class="visual" type="capsule" fromto="-0.28 -0.26 0.145 -0.28 0.48 0.034" size="0.012" rgba="0.7 0.77 0.8 1"/>
-      <geom class="visual" type="capsule" fromto="0.28 -0.26 0.145 0.28 0.48 0.034" size="0.012" rgba="0.7 0.77 0.8 1"/>
+      <geom name="cargo_rail_rear" class="visual" type="capsule" fromto="-0.28 -0.26 0.145 -0.28 0.48 0.034" size="0.012" rgba="0.7 0.77 0.8 1"/>
+      <geom name="cargo_rail_front" class="visual" type="capsule" fromto="0.28 -0.26 0.145 0.28 0.48 0.034" size="0.012" rgba="0.7 0.77 0.8 1"/>
       <site name="imu" pos="0 0 0"/>
       <camera name="overview" mode="track" pos="1 -6 5" xyaxes="1 0 0 0 0.64 0.77" fovy="60"/>
       <camera name="chase" mode="track" pos="-2.2 -2.2 1.8" xyaxes="0.707 -0.707 0 0.35 0.35 0.87" fovy="46"/>
@@ -71,7 +71,7 @@
         <geom name="cargo_box" type="box" size="0.32 0.225 0.13" mass="8" contype="0" conaffinity="0" rgba="0.77 0.48 0.22 1"/>
         <geom class="visual" type="box" pos="0 0 0.131" size="0.045 0.226 0.001" rgba="0.92 0.75 0.43 1"/>
         <geom class="visual" type="box" pos="0.321 0 0" size="0.001 0.085 0.065" rgba="0.94 0.9 0.76 1"/>
-        <geom class="visual" type="box" pos="0 0 0.24" size="0.21 0.18 0.11" rgba="0.65 0.38 0.16 1"/>
+        <geom name="cargo_top" class="visual" type="box" pos="0 0 0.24" size="0.21 0.18 0.11" rgba="0.65 0.38 0.16 1"/>
         <geom class="visual" type="box" pos="0 0 0.351" size="0.035 0.181 0.001" rgba="0.9 0.72 0.41 1"/>
       </body>
     </body>

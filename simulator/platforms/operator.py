@@ -28,6 +28,13 @@ def overrides(args):
             raise ValueError("config field must be an object")
     values = dict(values)
     values.update(setting_overrides(getattr(args, "settings", None)))
+    if getattr(args, "controller", None) is not None:
+        if args.scenario != "quadruped_gait_failure":
+            raise ValueError("--controller applies to quadruped_gait_failure")
+        if "controller_parameters" in values:
+            raise ValueError("Choose --controller or controller_parameters, not both")
+        from ..dog_task import load_controller
+        values["controller_parameters"] = load_controller(args.controller)
     for name in ("duration", "timestep", "fault_at", "probe"):
         value = getattr(args, name, None)
         if value is not None:
@@ -240,10 +247,15 @@ def view(args):
                     phase = "turn with cargo" if command["left"] != command["right"] else "drive with cargo"
                 elif phase == "controlled_probe":
                     phase = "steering and braking inspection"
+                task = sim.presentation() if hasattr(sim, "presentation") else None
                 presentation.update(viewer, position=observation["position"], elapsed=phase_time,
-                                    duration=sim.config.duration, phase=phase,
+                                    duration=phase_time if task and sim.finished else sim.config.duration, phase=phase,
                                     paused=paused, finished=sim.finished,
-                                    detail=view_detail(sim, observation))
+                                    detail=view_detail(sim, observation), task=task)
+                if hasattr(sim, "decorate_scene"):
+                    with viewer.lock():
+                        viewer.user_scn.ngeom = 0
+                        sim.decorate_scene(viewer.user_scn)
                 viewer.sync()
                 # Text upload/rendering can block until the next display frame.
                 # Start the refresh interval after it completes, so the next loop

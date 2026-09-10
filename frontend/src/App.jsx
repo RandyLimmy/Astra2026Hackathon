@@ -4,12 +4,20 @@ import { useRun, useRuns } from './hooks.js';
 import Replay from './components/Replay.jsx';
 import Investigator from './components/Investigator.jsx';
 import Comparison from './components/Comparison.jsx';
+import ScenarioReplay from './components/ScenarioReplay.jsx';
 
 function initialSelection() {
   return new URL(window.location.href).searchParams.get('run') || '';
 }
 
 export default function App() {
+  if (window.__SCENARIO_REPLAY__ || new URL(window.location.href).searchParams.get('view') === 'scenarios') {
+    return <ScenarioReplay onBack={() => window.location.assign(window.location.pathname)} />;
+  }
+  return <InvestigationApp />;
+}
+
+function InvestigationApp() {
   const listing = useRuns();
   const [selectedId, setSelectedId] = useState(initialSelection);
   const detail = useRun(selectedId);
@@ -72,6 +80,7 @@ export default function App() {
   return <>
     <header className="app-header">
       <a className="brand" href={window.location.pathname} aria-label="RealityPatch home">RealityPatch</a>
+      <a className="text-button" href="?view=scenarios">Failure demos</a>
       <select className="run-selector" aria-label="Recorded run" value={selectedId} onChange={event => setSelectedId(event.target.value)} disabled={!listing.runs.length}>
         {!listing.runs.length && <option value="">{listing.loading ? 'Loading experiments…' : 'No recorded runs'}</option>}
         {selectedId && !listing.runs.some(item => item.id === selectedId) && <option value={selectedId}>{selectedId}</option>}

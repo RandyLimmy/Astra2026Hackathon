@@ -1,138 +1,204 @@
-# RealityPatch simulator scenario plan
+# Simulator failure demos and Astra tooling plan
 
-Status: planning only. No scenario models, runtime code, agent code, or UI implemented by this plan.
+Status: **planning only**, 2026-09-10. This revision specifies four simulations, their animations/replays, and the documented tools through which GPT-6 Astra can later investigate and correct behavior. No simulator, controller, agent integration, or animation is implemented by this revision. All new numerical targets below are proposed calibration targets, not measured results.
 
-## Scope and ownership
+## Requirements and scope
 
-Build a reusable MuJoCo car test environment and a reproducible collection of synthetic failures. Our eventual responsibility is the simulator: MJCF assets, hidden physical behavior, experiment execution, resets, sensor recordings, replay, and scenario validation. Another workstream owns Astra/Sol integration, candidate-model editing, prediction locking, scoring dashboards, and the self-repair loop.
+Build the experimental playground: reproducible physical failures, readable animations, replayable evidence, engine/control documentation, editable controller interfaces, and tool calls for inspection, experiments, changes, and verification. Astra later chooses hypotheses, implements corrections, and tests them. Here, “learns” means that investigation process; model training is not required.
 
-The user requested planning without coding. Only this document is created now. Later, dynamic heating and timed failures require a small scenario runner in addition to MJCF; they cannot all be delivered as static XML scenes. No new dependencies are planned.
+The four primary stories are:
 
-Existing setup: MuJoCo 3.13.0 and its Python bindings are installed; the source checkout is untouched. The verified setup is documented in `README.md:3` and `README.md:38`. No car model exists yet.
+1. A robot dog tries to walk slightly faster, coordinates its limbs badly, and stumbles. Astra can inspect feet/joints/body motion and change the gait/controller so it completes the faster walk.
+2. A delivery drone carries a visibly off-center package from A toward B, becomes unstable, crashes, and shows a brief explosion effect after impact. Astra can inspect flight/engine evidence and change thrust allocation/control so the same loaded drone delivers at B and returns to A.
+3. A car steers incorrectly and drifts out of its lane. Astra can inspect commanded versus actual steering and adjust the controller to complete the route.
+4. A separate car experiment brakes too late or incorrectly and strikes an obstacle. Astra can inspect approach/braking evidence and implement automatic braking that completes the approach and stops with clearance.
 
-## Shared scene
+**A better dynamics prediction alone does not satisfy these stories.** The new editable artifact must command the simulated robot/car in the unchanged task world. Existing brake-model repair experiments remain available as a separate capability.
 
-Use one flat, straight track, one simple rigid car, four rotating physical wheels, a wall, ground markings, and fixed side/overhead cameras. Allow chassis translation, yaw, roll, and pitch so later failures can affect its motion. Start with fixed steering and no suspension, ABS, aerodynamics, or detailed tire model. This is a controlled synthetic experiment, not a validated vehicle safety simulator.
+Deliverables in this planning pass:
 
-Proposed starting dimensions and calibration targets, not measured results:
+- This implementation plan and acceptance matrix.
+- [Animation and replay storyboards](simulator-replay-storyboards.md).
+- [Proposed tool and controller contract](simulator-tooling-contract.md), including example invocation sequences.
+- [Documentation and handoff specification](simulator-documentation-map.md).
 
-- Total healthy vehicle mass: 1,200 kg, including wheels and carriers.
-- Track: 160 m long, 8 m wide. Wall face at x = 100 m for the demonstration.
-- Approach speed: 25 m/s. Brake trigger: front bumper reaches x = 45 m.
-- Cold stopping distance after trigger: approximately 46–48 m, giving 7–9 m clearance.
-- Physics timestep: start at 0.002 s; compare with 0.001 s before freezing scenarios.
-- Telemetry: 100 Hz; fixed-camera frames: 30 Hz, timestamped in simulation time.
+The [original S0–S6 car plan](archive/simulator-scenarios-car-original.md) is archived. Its brake fade, wheel loss, wet road, payload, weak brake, and actuator lag families remain regression/extension cases. Existing warehouse scenarios also remain available. Neither warehouse expansion nor new scenario families displace these four deliverables. Earlier implementation notes describe existing work; this revision controls the next scope.
 
-Measure wall clearance from the car's leading collision geometry, not the chassis center. For straight-line baseline calculations, 55 m of available braking distance and a 46 m stop imply about 6.8 m/s² mean deceleration. A claimed 54.6 m stop has only 0.4 m clearance, not a generous safety margin. All distances and failure outcomes in the pasted brief are illustrative until calibrated.
+## What exists, and what is missing
 
-### Common mechanics
+These are inspected baseline facts, not new verification results. Source references use repository-relative `path:line` notation at commit `803fa7f`, which was HEAD during initial inspection. Other simulator source edits appeared concurrently in the shared workspace; this planning pass does not implement or assess those edits. Recheck source offsets and reconcile those changes when implementation begins.
 
-Apply propulsion/braking at wheel joints so tire-ground contacts transmit force. Bound brake torque and oppose wheel motion; prevent the brake controller from becoming reverse propulsion near zero speed. Avoid an unlimited chassis force: it would bypass traction and undermine the wet-road scenario. MuJoCo supports joint/body force application (`mujoco/include/mujoco/mjdata.h:186`, `mujoco/include/mujoco/mujoco.h:625`); choosing wheel torque here is a design decision.
+| Area | Existing foundation | Gap for this request |
+|---|---|---|
+| Dog | Twelve-joint physical dog; commandable speed/yaw/joint targets; current demo injects 8% knee strength (`simulator/platforms/QUADRUPED.md:23`, `simulator/platforms/quadruped.py:278`) | Faster-gait coordination failure, editable gait configuration/source, progress-based completion |
+| Drone | Four bounded rotor commands and target-position control; demo has moderate rotor degradation; payload capture is idealized (`simulator/platforms/DRONE.md:13`, `simulator/DEMO_GUIDE.md:14`) | Lateral payload offset, visible physical package/latch, delivery/drop/return mission, load-aware editable controller, impact-triggered effect |
+| Steering | Physical steering/suspension, impact-gated damage, recovery reposition, public steering/throttle/brake (`simulator/platforms/CAR_DAMAGE.md:8`, `simulator/platforms/CAR_DAMAGE.md:36`) | Standalone lane-following task, fixed route, inspectable and editable steering controller, lane completion metrics |
+| Braking | Physical wheel braking, histories, wall collision and censored stop reporting (`simulator/contracts.md:12`, `simulator/contracts.md:89`) | Live automatic-brake controller driven by allowed observations; obstacle detection/range contract and task progress gates |
+| Experiments | Shared platform interface and recorder; timed lab schedules only for warehouse/drone (`simulator/platforms/CONTRACT.md:3`, `simulator/lab.py:28`, `simulator/lab.py:38`) | Uniform agent experiment contract across all four demos; controller execution and same-world comparisons |
+| Replay | PNGs/timestamps; live restart/pause/camera/speed controls (`simulator/recording.py:51`, `simulator/view_controls.py:118`) | Immutable multi-camera replay, seek/frame-step/event bookmarks, evidence alignment and comparison of actual controller attempts |
+| Agent tools | Seven braking-model tools, including editing only `actuator.py` (`investigation/broker.py:39`) | General simulator/controller tools, visual retrieval, platform schemas; existing tools do not supply these four repairs |
+| Images | Recorder saves frames, while investigation tool results are serialized to JSON; dashboard media explicitly excludes investigator context (`investigation/runner.py:204`, `dashboard/media.py:1`) | A documented image-content delivery interface; a file path or text description alone is insufficient visual input |
 
-For detachable wheels, propose a world-level free carrier welded to the chassis, with a rotating wheel hinged under the carrier. Disabling that carrier's weld releases the assembly while preserving the tire's spin. Do not weld the rotating wheel directly: welds suppress all relative degrees of freedom (`mujoco/doc/computation/index.rst:859`). Runtime equality activation is exposed through `mjData.eq_active` (`mujoco/include/mujoco/mjdata.h:189`). Validate this assembly before building the full track.
+No upstream `mujoco/` changes or new dependencies are planned. Reuse platform physics, validation, worker isolation patterns, recorder, and viewers. Avoid a second simulator or a new autonomous agent framework.
 
-Use physical contact and the existing momentum when releasing a wheel; do not add an unexplained launch impulse. Disable its drive/brake commands upon release. Verify collision filtering allows the released assembly to contact the ground and appropriate car geometry without artificial overlap impulses. If the simplified assembly cannot produce a reliable visible effect, revise the scenario instead of faking a crash.
+## Shared experimental design
 
-## Scenario catalog
+### Fixed task, editable controller
 
-Each row is a family of cases, not one scripted trajectory. Build the first three as the initial deliverable; retain the same platform for the remaining four.
+Each scenario publishes a task card, nominal engine description, allowed observations, control schema, bounded diagnostic probes, starter controller, mission criteria, and recorded failed run. The host owns physical parameters, contacts, obstacles, mission schedule, scoring, fixture versions, and reserved cases. Controller changes cannot modify those.
 
-| ID | Scenario | Hidden change | Observable evidence | Controlled probes and held-out variants |
+Three run labels have distinct meanings:
+
+- **Reference:** a labeled nominal physical/control example, useful for orientation. It is never presented as an Astra repair.
+- **Original attempt:** the flawed starter controller in the target task world.
+- **Candidate attempt:** a versioned controller supplied later through the tools, in the same target task world. It can fail and its real outcome remains visible.
+
+Every before/after comparison must match fixture, initial state/conditioning, mission, world version, and observation contract. Only controller source/configuration changes. Comparing a fault-free world to a damaged world is still an existing nominal-mismatch experiment, not repaired behavior.
+
+Controller execution is a simulator capability. Building a controller tool adapter and a deliberately imperfect starter is in the eventual tooling scope; authoring the corrected controller, diagnosis script, automatic optimizer, or model-driven orchestration is outside it.
+
+### Public knowledge and observations
+
+Expose the nominal engine in enough detail to reason: coordinate frames, mass/inertia conventions, actuator mapping/signs, joint order/limits, control cadence, latency, motor limits, contact model, integration step, reset behavior, and limitations. Expose nominal model assets and controller source through bounded tool reads. Where useful, add nominal kinematics/actuation query operations under engine inspection.
+
+Document every sensor as measured, derived, or command metadata. Keep exact injected fault parameters, private state snapshots, and evaluator schedules outside the public tool output. A visible off-center package is legitimate visual evidence; an overlay announcing its hidden COM is not. Existing operator `--set` commands remain builder tools and must not become the agent's way to erase a fault.
+
+### Common timeline and replay
+
+Each failed demo shows setup/goal, normal progress, observable loss of control, physical outcome, and a paused final result. Requested times are storyboard targets; actual event times come from the simulation. Capture 30 fps at a proposed 960×540 minimum per view, public observations at the existing 100 Hz, and commands at their actual application times. Physics starts from the existing 2 ms step and is checked at 1 ms.
+
+Use a wide view plus a diagnostic view per scenario. Public RGB is the source evidence for Astra. Operator annotations can explain the story, but do not replace unannotated frames. Provide actual image content to a future model adapter, with run ID, time, camera, and nearby telemetry. See the storyboard document for playback, checkpoints, event effects, and storage requirements.
+
+Replaying saved frames is read-only. Rerunning creates a new run. A reset is an explicit experiment intervention; it cannot silently cure damage or switch to a healthy world. Fresh target runs reinstantiate the same task-specific fault/load and controller state policy.
+
+## Scenario 1: faster dog, poor limb coordination
+
+**Primary cause:** a starter gait/controller that mishandles a modest speed increase on an otherwise healthy physical dog. Do not reuse injected knee weakness as if it were a gait timing bug. Existing joint weakness/foot slip remain separate diagnostic/regression cases.
+
+Proposed task: settle, walk at 0.12 m/s, then request 0.15 m/s along a marked route. Keep the request within supported speed limits. Show at least two complete slow gait cycles before the transition; allow a roughly 24–30 s demonstration if needed. Calibrate a flawed speed-to-gait transition, such as an inconsistent swing/stance phase update, that visibly causes mistimed support or toe scuffing. The body must move and stumble through torques and contacts.
+
+Evidence: front-quarter footage with all four feet distinguishable; side close-up of swing clearance and torso pitch; requested versus measured speed; joint angles/velocities; commanded targets/torques; foot contacts; IMU/torso height. Add world foot positions and planned swing/stance metadata as documented derived/public controller information where needed.
+
+Tools must permit speed-ramp and individual-leg probes, nominal joint/kinematics inspection, editing gait parameters or source, and rerunning with unchanged mechanics. Planned editable parameters: phase offsets, stance duty fraction, swing clearance, stride scaling, joint PD gains, and balance gains, all bounded and separately documented. Do not represent direct joint targets as the existing crawl controller: today they select a different PD branch (`simulator/platforms/quadruped.py:284`).
+
+Proposed gates:
+
+- Original attempt completes two slow cycles upright, then has an observable stumble after the speed transition: tilt above 25° for at least 0.1 s plus loss of expected support, or torso contact. Record the actual trigger and do not force a fall at a timestamp.
+- Candidate evaluation requires the full speed schedule, no torso contact/fall, maximum tilt below 25°, and mean speed within 10% of 0.15 m/s (0.135–0.165 m/s) after a 2 s transition allowance. It must complete the manifest's route distance within its horizon; derive that minimum distance from the fixed speed schedule and allowances before freezing the task.
+- Standing still, continuing at the original 0.12 m/s, halving the task speed, disabling motors, or shortening the run cannot pass. Test each explicitly. The current `safe` flag alone lacks a progress criterion (`simulator/platforms/quadruped.py:336`).
+- Development probes: stand, slow walk, speed ramp, one-leg swing/target checks. Reserve two intermediate speed ramps and one small heading change after fixtures are frozen.
+
+## Scenario 2: unbalanced drone delivery
+
+**Primary cause:** a lateral package offset combined with a starter controller that assumes symmetric loading. This is distinct from rotor failure and from insufficient total lift.
+
+Proposed mission: visibly loaded drone at pad A → take off → travel about 4 m to B → place/release the package inside B → return unloaded → settle/land at A. Mark both pads and the route. The package starts secured to one side; preserve its mass and geometry throughout the loaded phase. A physical latch release at B creates a separate package body with continuous pose/velocity. Record delivery only when that package is actually deposited and remains at B.
+
+Use a moderate load as a calibration starting point (for example 0.35 kg and 0.08–0.16 m lateral mounting offset). These values are not promised to create a crash. Before accepting the fixture, verify loaded and unloaded thrust/torque feasibility per rotor with at least 20% upper thrust headroom at equilibrium. Total lift alone is insufficient; the rotor allocation must also balance moments. The current 1.4 kg payload default added to the nominal 1.2 kg body exceeds four 6 N rotors' total hover authority (`simulator/platforms/DRONE.md:13`, `simulator/platforms/DRONE.md:28`), so it cannot serve as this controller-repair task.
+
+Calibrate a documented imperfect symmetric-load starter and mission that physically produces unstable attitude, ground impact, and aftermath. If the selected offset is naturally stabilized, revise the starter/fixture openly before freezing it; do not prescribe an impact trajectory or exceed recoverable hardware limits merely to obtain a crash.
+
+Evidence: wide A/B route, oblique underside view that shows the offset package, roll/pitch and altitude history, requested rotor commands, saturation, world velocity, gyro, and mission milestones. Nominal engine docs explain rotor locations/order/signs and how unequal vertical thrust creates correcting moments. Actual load/COM can be inferred through visual and pulse evidence without exposing the private answer.
+
+Astra's later correction surface is the controller's mass/COM estimate, feedforward, rotor allocation/trims, attitude/position gains, and load-transition state. Use differential thrust for counterbalancing in the first version. A movable ballast would require an additional physical mechanism and bounded actuator; it is an optional extension, not a hidden mass slider. Package release is a documented command permitted only within the delivery envelope.
+
+Proposed gates:
+
+- Original attempt visibly transports the package away from A, then loses control and physically impacts. Camera captures imbalance, descent, contact, and at least 2 s of aftermath.
+- Explosion/sparks/smoke start only after a qualifying collision event. This is a labeled presentation effect, with no physics forces or effect on task scores. Clean impact footage is also available.
+- Candidate evaluation requires ordered A→B→A milestones, package deposited within 0.4 m of B and stationary for 1 s, return within 0.4 m of A, terminal speed below 0.15 m/s for 1 s, and completion within the fixed mission horizon (initial target 35–45 s).
+- Exclude declared low-speed pad takeoff/landing contacts from crash classification; include high-speed or uncontrolled chassis contacts. Define and freeze impact thresholds in the fixture before evaluation.
+- Require no crash, no package release outside B, transit tilt below 30°, and fixed route tracking bounds. Hovering indefinitely, changing the goal, dumping the package at A, or increasing motor limits cannot pass.
+- Development probes: loaded hover, collective pulse, opposed roll/pitch pulses, loaded translation, permitted release/unloaded response. Reserve mirrored offsets, another feasible load, and a different outbound/return route. Engine authority must hold for every reserved case.
+
+## Scenario 3: car steering drift
+
+**Primary cause:** biased/miscalibrated steering response that a controller must compensate. Build on the existing steered car. Keep the current impact→reposition inspection demo separate; the primary new animation begins on a clearly marked driving course.
+
+Declare the damaged initial steering fixture or show a labeled preparation replay. Do not silently transplant a healthy car for the candidate attempt. Proposed task: drive a 30 m straight/gentle-curve route at 4 m/s, with a 4 m lane and visible centerline. The unchanged starter's neutral or nominal steering command creates sustained lateral drift and lane departure; a barrier at the outer edge is optional.
+
+Evidence: overhead trajectory and lane boundaries; front wheel/rack close-up; commanded and actual steering; yaw rate; lateral/heading error to the fixed route; wheel speeds and velocity. Separate target centerline from actual traveled path.
+
+Tools must permit small positive/negative steering pulses, zero-steering/coast probes, fixed-speed route trials, and edits to steering sign/scale/offset estimates and lateral/heading feedback. Keep the task route and physical rack bias outside the editable artifact. Exact steering mapping is inferred; nominal mapping and units are documented.
+
+Proposed gates:
+
+- Original attempt travels at least 5 m before its body footprint crosses a lane boundary; video and geometry-derived event agree. No preassigned sideways chassis translation.
+- Candidate evaluation completes the full route with mean moving speed at least 3.2 m/s, centerline RMS error at most 0.25 m and peak at most 0.5 m, no footprint departure/contact, and a controlled stop at the marked finish. Freeze acceleration/finish allowances in the task card.
+- A parked car does not pass. Rewriting the centerline to follow the car does not pass. Current post-crash `safe` metrics are insufficient for this mission (`simulator/platforms/CAR_DAMAGE.md:54`).
+- Development probes: straight, left/right pulses, slow slalom, coast. Reserve a modest speed change, reverse-signed steering bias, and a gentle curve within remaining steering authority.
+
+## Scenario 4: automatic braking before an obstacle
+
+**Primary cause:** an inadequate brake-trigger/modulation policy, initially on a dry, physically stoppable track. Keep stronger friction/thermal variants as later tests instead of confounding the first animation.
+
+Reuse the original longitudinal car mechanics, wheel torques, wall/contact logic, and histories. Add a controller callback for throttle/brake at a declared rate; the existing editable wheel-capacity model is a different interface. Start at a manifest-defined approach speed and reveal a stationary obstacle through a declared camera/range sensor with enough distance for a feasible stop. The flawed starter triggers too late or modulates poorly and contacts the obstacle.
+
+Proposed first calibration: 12 m/s approach, obstacle initially about 25 m ahead of the front bumper. Validate actual stopping capability, sensor availability/latency, actuator lag, and margin before freezing either number. Sensors must make successful intervention possible; no trial may require braking before the obstacle becomes observable.
+
+Evidence: side-wide view containing car, obstacle, and physical gap; chase view; speed, front-bumper gap, range validity, closing speed, commanded brake/throttle, wheel angular speeds, and actual collision/stop event. State whether obstacle range is an ideal simulated sensor; do not attribute it to vision inference.
+
+Tools must permit brake step/pulse/coast experiments, matched wall-free diagnostic stopping tests, and edits to a stateful automatic-brake controller. The documentation should explain reaction/actuation delay and braking-distance estimation principles without supplying tuned scenario answers. An editable brake-capacity model can be an optional estimator inside the controller later, but predicting a stop does not actuate the brakes.
+
+Proposed gates:
+
+- Original attempt physically contacts the obstacle with positive pre-impact speed; collision records are censored and never labeled free stopping distance.
+- Candidate evaluation reaches the approach zone at the required speed, brakes after detection using allowed signals, then stops with 1–5 m front-bumper clearance, no contact, and speed below 0.1 m/s for 0.5 s before timeout.
+- Stopping immediately at launch, changing obstacle position, increasing friction/brake hardware limits, or reporting only a prediction cannot pass. The approach-zone/speed gate prevents these shortcuts.
+- Development probes: coast, partial/full braking, brake pulse, wall-free stop. Reserve different feasible speeds/gaps and one declared reduced-grip or warm-brake case after the basic policy interface is proven. Score censored/timeout results explicitly.
+
+## Planned implementation sequence
+
+All new paths in this table are **future deliverables**. Existing source anchors above identify reuse points. Implementation begins only in a later implementation task.
+
+| Order | Work and ownership boundary | Files/surfaces | Exit evidence |
+|---|---|---|---|
+| 1 | Freeze task cards, editable boundaries, proposed numbers after physical calibration, and scenario matrix | New `simulator/tasks/`; existing platform assets/modules and `simulator/config.py` | Four manifests distinguish mission, physics, starter controller, observations, visual checkpoints and validation cases |
+| 2 | Add controller execution contract and one common tool dispatcher; reuse existing worker mechanisms where applicable | New `contracts/CONTROLLER.md`, `simulator/tooling.py`, `simulator/public/tools.schema.json`; bounded adapters in platform modules/runner; existing worker runtime | All four platforms run validated public controllers and schedules; rejects preserve state; private world inaccessible |
+| 3 | Build four original failed scenarios and generic diagnostic probes | Existing `quadruped.py`, `drone.py`, `car_damage.py`, `runner.py`; platform XML; new starter-controller/task assets | Every failure arises physically, is reproducible, has remaining control authority, and has the intended observable signature |
+| 4 | Add multi-camera recording, visual tool outputs and immutable replay/comparison | Extend `recording.py`, `view_controls.py`, platform operator; proposed `simulator/replay.py` and `simulator/visual_evidence.py` | Seek, frame-step, replay, bookmarks, synchronized plots, drone impact effect, image-content response contract pass |
+| 5 | Complete public docs, JSON examples, diagnostic walkthroughs and builder guide | Planned `simulator/tooling/` documentation tree described in companion document | A fresh caller uses only the public bundle to discover tools, get images, run a probe, validate an edit and compare actual runs |
+| 6 | Validate whole simulator/tooling package and hand off | Extend focused tests; new contract/mission/replay tests; build/runtime checks and validation report | All four coverage rows pass; legacy scenarios remain working; measured artifacts accompany docs; no claim of Astra-authored success without such a run |
+
+Steps 3's platform implementations can run independently once contracts are fixed. Step 4 can prepare the common replay layer alongside platform work, then perform visual QA on each finished scenario. A future implementation lane should own one platform at a time; shared schema/recorder integration has one owner to avoid competing interfaces.
+
+## Acceptance matrix and verification
+
+| Requirement | Dog | Delivery drone | Steering | Auto brake |
 |---|---|---|---|---|
-| S0 | Healthy car | None | Repeatable straight braking and safe stop | 15/20/25 m/s, partial/full braking, coast-only; reserve intermediate speeds |
-| S1 | Brake fade and recovery | Temperature-dependent brake torque capacity | Repeated braking worsens stopping; rest restores it | Vary braking energy and rest independently; reserve mixed warm-up/recovery histories |
-| S2 | Front-right wheel detaches | Release one wheel carrier | Visible separation, changed support and braking, possible yaw | Coast versus brake after release; reserve speed, release time, and combined moderate heat |
-| S3 | Wet road patch | Lower tire-road contact friction over a spatial interval | Braking weakens upon entering that location | Brake before/inside/after the patch; reserve patch position/length and approach speed |
-| S4 | Additional payload | Add a secured, centered 300 kg load | Lower acceleration and, in a torque-limited regime, lower deceleration | Compare coast, drive, partial brake, full brake; reserve 150/450 kg loads |
-| S5 | One brake weakens | Front-left brake retains 20% capacity | Braking-dependent asymmetry with the wheel still attached | Coast and multiple brake strengths; reserve onset time and severity |
-| S6 | Brake actuator lag | Brake torque command follows first-order dynamics | Gradual onset with approximately unchanged settled response | Short pulses versus long steps; reserve pulse durations and time constants |
+| Failed physical animation and visible objective | Faster walk → mistimed legs → stumble | Loaded A→B flight → tilt → crash/effect | Lane route → drift → departure | Approach → late braking → impact |
+| Primary diagnostic view | Feet, joints, support | Package, rotors, body attitude | Wheels and lane path | Gap, speed and wheel response |
+| Editable capability | Gait/joint/balance controller | Load estimate and thrust/flight controller | Steering/route controller | Stateful trigger/modulation controller |
+| Replay deliverables | Wide + limb view + gait/contact trace | Route + package view + rotor/attitude trace | Overhead + wheel view + route errors | Side + chase + brake/range trace |
+| Anti-shortcut gate | Required speed and distance | Deposit at B and return A | Required route/speed | Approach at speed then stop near obstacle |
+| Evidence of later repair | Same-world candidate completes faster walk | Same-world candidate delivers and returns | Same-world candidate stays in lane | Same-world candidate actually stops |
 
-### S0: healthy reference
+Verification for later implementation:
 
-Calibrate cold brake torque on a dry, high-friction track so braking is torque-limited rather than contact-saturated. Use identical nominal mechanics for hidden reality and the candidate's baseline asset. Record initial wheel spin consistent with chassis speed to avoid a startup slip artifact. Settling must happen before the measured run.
+1. Validate all documented schemas/examples, units, ranges, cadence, resets, partial/error results and artifact permissions; include invalid command, stale edit, unknown run, wrong-platform and cross-task access cases.
+2. Run three identical original attempts per fixture with identical pre-impact outcomes and event timing within one physics step. Pre-impact pose tolerance starts at 1 mm and attitude at 0.1° in the same pinned environment; calibrate and freeze any justified change. Do not demand identical post-impact trajectories across different timesteps.
+3. Halve timestep: retain failure classifications, mission feasibility and pre-contact metric differences within 2%. No NaN/Inf, solver warnings, or automatic engine resets accepted as physical failures.
+4. Prove rendering, playback speed, seeking and effects do not change recorded physics; frame/telemetry alignment within one captured frame. Reject a mismatched rerender rather than passing off a new run as a replay.
+5. Use rejection/control candidates to test success rules: standing dog, hovering drone, parked car, immediate-stop car, and mission/physics mutation attempts all fail appropriately. These are contract tests, not authored successful solutions.
+6. Visually inspect setup, failure onset, physical event and aftermath for each scenario using `$visual-verdict` during implementation iterations; persist verdict JSON under `.omx/state/simulator-failure-demos/ralph-progress.json`. Require passing visibility checks for both human presentation and clean agent frames.
+7. Run relevant tests and the full Python suite at integration (`.venv/bin/python -m pytest tests`), lint (`ruff check simulator contracts component_worker tests`), type/static checks (`mypy --python-executable .venv/bin/python simulator`). Run frontend build only if frontend code changes. Save exact commands, tool versions, outcomes and verification gaps; do not inherit old “passed” counts as new evidence.
+8. Handoff a simulator/tooling readiness report. At this stage the new corrected replay slot can legitimately say “No candidate run yet.” A later successful Astra-authored run needs tool transcript, controller hash/diff, unchanged-world manifest and measured completion; a developer reference never substitutes for it.
 
-Gate: three identical runs stop within 0.1 m of each other; the 25 m/s demonstration stops in the target interval without wall contact; lateral drift stays below 0.25 m. Lower brake input must not shorten the stop in the selected torque-limited operating range.
-
-### S1: heating, fade, recovery
-
-Model brake-disc heat from actual dissipated brake power: heat capacity times temperature rate equals a fraction of brake torque times wheel angular speed, minus cooling to ambient. Use documented units, positive heat capacity, positive cooling time, and a smooth bounded fade curve. Calibrate a synthetic temperature range; do not claim the constants describe a real brake system.
-
-MuJoCo's built-in DC motor thermal feature models winding temperature and electrical resistance (`mujoco/doc/XMLreference.rst:6977`). It is not automatically a friction-brake fade model. A small hidden thermal update is therefore part of the eventual simulator runner.
-
-Warm-up means repeated accelerate/decelerate cycles on a wall-free version of the track. Do not count stationary brake-command time as heating: once the wheel stops, dissipated brake power is near zero. Expose the complete commands and motion during conditioning, followed by rest. Reposition the car for the wall trial while retaining thermal state.
-
-Gate: cold baseline passes; a fixed hot history increases wall-free stopping distance by at least 20% and the selected wall case collides; longer rest monotonically reduces excess distance for the chosen calibration. A long-rest case returns within 5% of baseline. Coast-only or stationary pedal-hold histories must not produce comparable heating. These are acceptance targets, not results already observed.
-
-### S2: physical wheel loss
-
-Trigger release at a private, deterministic simulation time or track coordinate. Use side/front-quarter footage that actually shows the separation. Log wheel presence and release events privately for validation; neither becomes a privileged sensor returned to the agent. A vision-based inference from frames is allowed.
-
-Gate: while attached, carrier position error stays below 1 cm and the wheel rotates; after release, the assembly separates by at least 0.5 m within 2 s in the chosen demo case and its attachment remains inactive. The resulting motion must differ reproducibly from the healthy case without numerical warnings. Select a physically produced collision or lane departure for the demo if available; detachment alone does not guarantee either. Report the observed result honestly.
-
-The candidate cannot predict an arbitrary unobserved future wheel failure. Test prediction of motion after observing failure, or provide a declared external release intervention. Reserve the release schedule itself for diagnosis runs; do not score its exact prediction as missing-physics discovery.
-
-### S3–S6: extension requirements
-
-- Wet road: use adjoining ground segments without an overlapping dry ground collider. Give ground friction suitable priority or specify wheel-road contact pairs. Equal-priority geoms use the maximum friction coefficient, so merely lowering the road value may do nothing (`mujoco/doc/modeling.rst:425–449`). Verify effective contact friction. In a selected braking case the wet patch must increase wall-free distance by at least 20%, while a path avoiding it matches dry baseline within 5%.
-- Payload: load before reset/compilation, with consistent total mass, center of mass, and inertia. No unexplained mid-run mass teleportation. In friction-limited braking, extra mass need not increase stopping distance because available friction scales with normal force. Demonstrate the load effect in the calibrated torque-limited regime, targeting at least 15% longer stopping distance. Keep cargo secured and centered to isolate mass from shifting-load dynamics.
-- Weak brake: verify affected-wheel torque is 20% of its healthy value for the same activation; all wheels remain attached. Select cases where brake-dependent yaw exceeds healthy yaw by at least 3°, while coast trajectories differ by less than 1° over the same interval. Use this as evidence supporting an asymmetric braking hypothesis, not proof that excludes every other cause.
-- Actuator lag: use a first-order filter, initially around 0.25 s, with the same torque saturation as baseline. `filterexact` integrates that activation filter analytically (`mujoco/doc/XMLreference.rst:5757`, `mujoco/doc/computation/index.rst:363`). It is not pure transport delay. Gate: activation reaches approximately 63% at one time constant and 95% by three, within 5 percentage points; steady torque agrees within 2%. A true dead-time scenario would need a separate command-history mechanism and is deferred.
-
-## Experiment and reset contract
-
-Define simulator-facing records independently of the agent's tool implementation:
-
-1. A request specifies initial observable pose/speed, throttle/brake schedules, warm-up/recovery history, run duration, camera choice, and reset mode. Commands are bounded and timestamps use simulation time.
-2. A full reset restores ambient temperature, healthy wheel/brake state, default mass/surface, inactive failure schedules, and clean controller state. Each independent experiment begins with a full reset and replays its declared conditioning history.
-3. A trial reset repositions/reinitializes chassis and attached-wheel motion while explicitly retaining declared persistent state. Hidden temperature and retained faults must not disappear through a generic `mj_resetData`. Completed detachments are repaired only by full reset or an explicit intervention.
-4. Warm-up without the wall and the wall trial share persistent state. Teleport/reposition is a declared experimental reset, never concealed as continuous driving.
-5. A result returns time, observable pose/velocity, yaw/yaw rate, wheel speeds if enabled in the fixed sensor set, commands, camera frames, wall contact, impact speed, lane departure, and observed stop status. Direct force/temperature readings are not enabled by default.
-6. Evaluator-only records retain parameters, event schedule, true temperature, contact forces, seed, model version, solver settings, and reset provenance. No hidden parameter names, revealing scenario IDs, source paths, or diagnostic overlays enter agent-facing outputs.
-
-The public sensor set is fixed before evaluation and shared by Astra and Sol. Heat cannot be inferred from an unreported prehistory fairly: both get the same available history, even when temperature itself is hidden.
-
-For actual isolation, the hidden simulator runs under a separate process/account or container boundary with restricted filesystem access. A `reality/` directory beside candidate code is not isolation if the agent has unrestricted shell access. The simulator workstream supplies an explicit public export; integration work owns enforcing the deployment boundary.
-
-## Validation and handoff
-
-Keep two track variants: wall-present for visible collision outcomes and wall-free for stopping-distance measurements. After a wall collision, the measured trajectory is censored; do not call the collision position a free stopping distance. A paired evaluator-only replay from the same pre-run state can measure the counterfactual stop. Report timeouts as censored, too. Define a stop as speed below 0.1 m/s for 0.5 s.
-
-Provide a development matrix and a private held-out matrix. Initial matrix: 3 healthy cases, 3 heat/recovery cases, and 3 wheel-loss cases; holdouts: 2 intermediate-speed baseline cases, 2 unseen heat histories, and 2 post-observation wheel-loss predictions including moderate heat. Later add at least 2 development and 2 held-out cases per extension. Freeze parameter ranges, seeds, and splits before model repair; do not tune cases after seeing agent predictions.
-
-Every scenario must pass:
-
-- Three same-seed runs within 0.1 m stopping distance and 0.5° final pre-impact yaw; event timing within one physics step.
-- No NaN/Inf state, automatic numerical resets, or MuJoCo solver warnings in accepted runs.
-- Halving timestep changes wall-free distance by less than 1% and preserves selected collision labels. Move marginal cases away from the wall threshold if numerical sensitivity changes the label.
-- Physics advances without rendering; changing video capture rate does not change trajectories beyond the repeatability tolerance.
-- Full reset reproduces cold baseline after each failure; trial reset preserves exactly the declared persistent states.
-- Neutral settings for each fault reproduce the baseline within 1% stopping distance.
-- Video timestamps match logs within one video frame; wheel-loss footage visibly includes the detached wheel.
-
-The simulator supplies raw outcomes and reference replays. The other workstream locks candidate predictions, runs repaired-model regressions, and computes prediction error. A simulator validation pass is not evidence that Astra has repaired anything.
-
-## Planned delivery sequence and file ownership
-
-All paths below are future deliverables, not files already created:
-
-1. **Mechanical prototype:** `simulator/assets/car.xml`, `track.xml`, `track_no_wall.xml`. Prove rolling, braking, wall contact, and one releasable wheel on a small test before expanding assets.
-2. **Experiment foundation:** `simulator/runner.py`, `recording.py`, and `contracts.md`. Establish deterministic stepping, reset semantics, observation filtering, camera replay, and evaluator-only logs. Runtime code remains deferred until implementation is requested.
-3. **Initial scenarios:** `simulator/private/thermal.py`, `events.py`, and `simulator/private/scenarios/` data manifests for S0–S2. Calibrate and freeze discovery/holdout cases, then meet the gates above.
-4. **Simulator handoff:** `simulator/public/` baseline assets and observation schema; private validation report and replay artifacts. Export a clean baseline with matching nominal mechanics but without failure rules. Do not put hidden implementation in the public bundle.
-5. **Extensions:** add S3–S6 one at a time through the same runner and validation contract. Re-run all prior simulator cases and neutral-fault controls after each addition.
-
-No changes are planned to the upstream `mujoco/` source. No agent tools, candidate patch logic, dashboard, or benchmark orchestration are included in simulator ownership.
-
-## Main risks and mitigations
+## Risks and mitigations
 
 | Risk | Mitigation |
 |---|---|
-| Car/wheel constraints consume the build effort | Prototype one releasable rolling wheel first; use simple primitive geometry and low center of mass |
-| Road friction has no effect | Use wheel torques, inspect effective contact friction, exclude overlapping dry colliders |
-| Every perturbation is explained as heat | Isolate faults first; include coast-only, stationary-brake, recovery, and spatial-control experiments |
-| Scripted numbers masquerade as results | Treat all example values as targets; save measured manifests and raw traces before the demo |
-| Hidden state or held-out answers leak | Separate public exports from private evaluator storage and require deployment access restrictions |
-| Collision hides stopping error | Use matched wall-free replay and explicitly label it counterfactual |
-| Unknown future events make prediction impossible | Evaluate post-observation behavior or declared interventions, not clairvoyance |
+| Polished footage still tells the wrong failure story | Gate each primary fixture on the exact cause/observable sequence above; retain old demos under their old names |
+| Failure cannot be corrected with permitted controls | Check steering, gait and per-rotor authority plus braking feasibility before freezing; reduce severity or redesign flawed starter openly |
+| Controller wrapper accidentally solves the task | Keep adaptation in the candidate; baseline helper/control behavior is disclosed; no hidden load-aware tuning |
+| Scenario passes by doing nothing or changing goals | Host-owned speed/progress/milestone/approach criteria and explicit negative tests |
+| Agent receives only text while demo claims visual reasoning | Image retrieval returns decodable content with timestamps; future adapter must attach that content, verified with a transport test |
+| Replay is a fresh simulation or manufactured outcome | Immutable captured media/state provenance; label reruns and verify rerenders; no generated-image substitutes for physical evidence |
+| Documentation reveals the answer or is too vague to invoke | Publish nominal mechanics, APIs and diagnostic methods; keep exact scenario truth/reference corrections private; test examples against schemas |
+| Multiplatform expansion disturbs existing work | Add task-specific adapters and preserve existing preset behavior; extend existing tests; no upstream engine rewrite or dependencies |
 
-Official references: [contact parameters](https://mujoco.readthedocs.io/en/stable/modeling.html#contact-parameters), [actuation and equality constraints](https://mujoco.readthedocs.io/en/stable/computation/index.html), [simulation lifecycle](https://mujoco.readthedocs.io/en/latest/programming/simulation.html). Local source references above are pinned to the installed 3.13.0 checkout.
+## Completion of this planning pass
+
+The planning output is complete when these four scenario specifications, companion storyboards/tool contract/documentation map, file ownership, acceptance criteria and risks are written and cross-checked against the checkout. This is not an implementation approval gate or a request to begin coding: the user explicitly requested planning first.
+
+Planning verification completed: four active documents; eight local links; 38 source references checked against baseline `803fa7f`; 11 parseable JSON request/response examples; 18 unique proposed tools; original car-plan body preserved in the archive; no whitespace errors. An independent read-only review identified and resolved the faster-walk tolerance, required dog actuation surface, and missing public-document retrieval operation. Runtime tests and visual validation were not run for this documentation-only change. Scenario numbers still require physical calibration during later implementation.

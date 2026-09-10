@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RealityPatch · Failure replay</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#e9edf3;background:#0d1219;font-synthesis:none}
+*{box-sizing:border-box}body{margin:0}button,a,input,select{font:inherit}button,select{border:1px solid #34404d;border-radius:7px;background:#1c2733;color:#e9edf3;padding:9px 13px;cursor:pointer}button:hover,select:hover{background:#293848}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #7ee0cf;outline-offset:3px}button[aria-pressed=true]{color:#8fe5d5;border-color:#76cbb9;background:#18352f}a{color:#8fe5d5}header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #293341;padding:20px 4vw;gap:16px}.brand{font-size:15px;font-weight:700;letter-spacing:.04em}.brand span{color:#8495a8;font-weight:400;margin-left:10px}.pill{font-size:12px;border:1px solid #4d3d30;color:#f9c68c;border-radius:30px;padding:6px 11px}.wrap{max-width:1440px;margin:auto;padding:28px 4vw 32px}.heading{display:flex;justify-content:space-between;align-items:end;margin-bottom:20px;gap:20px}.eyebrow{font-size:11px;letter-spacing:.14em;color:#8b9caf;text-transform:uppercase}h1{font-size:clamp(23px,3vw,34px);letter-spacing:-.035em;margin:8px 0;font-weight:600}.objective{font-size:14px;color:#a6b5c5;line-height:1.5;margin:0;max-width:760px}.repair{color:#91a2b5;font-size:12px;white-space:nowrap}.layout{display:grid;grid-template-columns:minmax(0,1fr) 265px;gap:18px}.player{background:#141d28;border:1px solid #293747;border-radius:12px;overflow:hidden}.stage{position:relative;width:100%;min-width:0;background:#15202a;aspect-ratio:16/9;overflow:hidden}.stage img{width:100%;height:100%;object-fit:contain;display:block}.tag{position:absolute;top:15px;left:16px;border:1px solid #65768770;background:#101820d9;padding:6px 10px;border-radius:5px;font-size:11px;letter-spacing:.08em}.status{position:static;max-width:none;min-height:90px;background:#0d1420df;padding:12px 16px;border-left:3px solid #8fe5d5;font-size:13px}.status.failed{border-color:#f4aa76}.missing{position:absolute;inset:0;display:grid;place-content:center;text-align:center;background:#14202d;padding:30px}.missing[hidden]{display:none}.camera-row{padding:12px 16px;display:flex;align-items:center;gap:7px;border-bottom:1px solid #293747}.camera-row .label{font-size:11px;color:#90a0b2;margin-right:5px}.camera-row button{font-size:12px;padding:6px 10px}.time{margin-left:auto;font:12px ui-monospace,monospace;color:#b3c2d1;white-space:nowrap}.transport{padding:17px 16px}.scrub{width:100%;accent-color:#87ddce;cursor:pointer;margin:5px 0 14px}.control-row{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.control-row button,.control-row select{font-size:12px}.primary{background:#a1e6d6;color:#0b2b25;border-color:#a1e6d6;font-weight:600}.primary:hover{background:#b9f4e6}.control-row select{margin-left:auto}.keys{font-size:10px;color:#7f91a5;margin:14px 0 0;line-height:1.6}.sidebar{display:flex;flex-direction:column;gap:14px}.panel{border:1px solid #293747;border-radius:10px;background:#131c27;padding:17px}.panel h2{font-size:12px;letter-spacing:.06em;font-weight:500;color:#9baec2;text-transform:uppercase;margin:0 0 15px}.metric{display:flex;justify-content:space-between;gap:10px;margin:14px 0;font-size:12px;color:#97aabd}.metric strong{font:14px ui-monospace,monospace;color:#e5edf6;text-align:right}.event{display:flex;width:100%;text-align:left;background:transparent;border:0;border-left:2px solid #3e5368;border-radius:0;padding:8px 10px;margin:10px 0;font-size:11px;line-height:1.5;gap:10px}.event.active{border-left-color:#8fe5d5;background:#1c2b38}.event time{color:#84bdb4;white-space:nowrap;font:11px ui-monospace,monospace;padding-top:2px}.panel p{font-size:12px;color:#94a7ba;line-height:1.6;margin:0}.evidence{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px;font-size:11px}.foot{margin-top:19px;color:#73889e;font-size:11px;line-height:1.7}.speed-chart{width:100%;height:62px;margin-top:4px}.mini{font-size:10px;color:#8096ab}.loop-state{font-size:11px;color:#e9be8d;margin:12px 0 0}.loop-state:empty{display:none}
+@media(max-width:950px){.layout{grid-template-columns:1fr}.sidebar{display:grid;grid-template-columns:1fr 1fr}.sidebar .panel:last-child{grid-column:1/-1}.heading{align-items:start}.repair{white-space:normal;text-align:right}.wrap{padding:22px 3vw}.stage{min-height:220px}}
+@media(max-width:560px){header{padding:15px}.brand span{display:none}.heading{display:block}.repair{margin-top:10px;text-align:left}.sidebar{display:flex}.camera-row{flex-wrap:wrap}.time{width:100%;margin:3px 0 0}.control-row select{margin-left:0}.wrap{padding:18px 12px}h1{font-size:25px}.tag{font-size:9px}.status{font-size:11px;bottom:8px;left:8px}}
+.goal-flag{position:absolute;right:16px;top:15px;max-width:48%;padding:8px 12px;background:#102a25ed;border:1px solid #67a995;border-radius:5px;font-size:12px;line-height:1.5;color:#d9fff2}.goal-flag small{display:block;color:#92c9b7;font-size:9px;letter-spacing:.15em}.status strong{display:block;font-size:16px}.status .status-detail{display:block;white-space:pre-line;font-size:12px;font-weight:400;color:#c2cfdd;margin-top:5px}.status.failed{border-left-width:5px;background:#2c1716ed}.status.failed strong{font-size:clamp(17px,2vw,25px);color:#ffc49a}.status.ended{right:16px;max-width:none;padding:16px}.status.success{border-color:#8fe5d5}.status.success strong{color:#8fe5d5}@media(max-width:560px){.goal-flag{font-size:10px;padding:5px 7px;right:8px;max-width:52%}.status{min-height:70px}.status strong{font-size:12px}.status.failed strong{font-size:14px}.status .status-detail{font-size:10px}.status.ended{padding:8px;right:8px}}
+</style>
+</head>
+<body>
+<header><div class="brand">RealityPatch<span>Simulation lab</span></div><div class="pill">Failure replay ready</div></header>
+<main class="wrap">
+<div class="heading"><div><div class="eyebrow" id="scenario"></div><h1 id="title"></h1><p class="objective" id="objective"></p></div><div class="repair">GPT-6 repair · <strong>Not run</strong></div></div>
+<div class="layout">
+<section class="player" aria-label="Recorded simulation player">
+<div class="stage"><img id="frame" alt="Recorded physical simulation"><div class="tag" id="viewTag"></div><div class="goal-flag"><small>GOAL</small><span id="goalLabel"></span></div><div class="missing" id="missing" hidden>Recorded image is missing.<br>Keep the replay page with its frames folder.</div></div>
+<div class="status" id="status" role="status"><strong id="statusTitle"></strong><span class="status-detail" id="statusDetail"></span></div>
+<div class="camera-row"><span class="label">CAMERA</span><span id="cameras"></span><span class="time" id="time"></span></div>
+<div class="transport"><input class="scrub" type="range" id="scrub" aria-label="Replay time" min="0" step="0.001" value="0"><div class="control-row">
+<button id="play" class="primary">Play failure</button><button id="restart" title="Restart recorded playback">Restart</button><button id="prev" aria-label="Previous frame">← Frame</button><button id="next" aria-label="Next frame">Frame →</button><button id="inspect" aria-pressed="false">Inspect failure</button>
+<select id="rate" aria-label="Playback speed"><option value=".25">0.25×</option><option value=".5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+</div><p class="loop-state" id="loopState"></p><p class="keys">Space: play / pause · ← / →: one frame · C: camera · − / +: speed · Home: restart. Recorded playback holds the final frame.</p></div>
+</section>
+<aside class="sidebar">
+<section class="panel"><h2>Measured motion</h2><div id="metrics"></div><svg class="speed-chart" id="chart" viewBox="0 0 230 62" role="img" aria-label="Recorded speed over the approach"><path id="speedPath" fill="none" stroke="#7acfc0" stroke-width="1.8"/><line id="cursor" y1="2" y2="61" stroke="#f4b780" stroke-width="1"/></svg><div class="mini">Speed over simulation time</div></section>
+<section class="panel"><h2>Run timeline</h2><div id="events"></div></section>
+<section class="panel"><h2>Evidence for investigation</h2><p>Original controller attempt. Frames, commands and measured motion are preserved for GPT-6’s later diagnosis.</p><p id="preparation" style="margin-top:10px"></p><div class="evidence"><a href="observations.jsonl" download>Telemetry</a><a href="preparation.json" download>Preparation history</a><a href="manifest.json" download>Run manifest</a></div></section>
+</aside>
+</div><div class="foot" id="foot"></div>
+</main>
+<script id="manifest" type="application/json">__REPLAY_MANIFEST__</script>
+<script>
+"use strict";
+const run=JSON.parse(document.getElementById('manifest').textContent),frames=run.frames;
+const el=id=>document.getElementById(id),end=frames.at(-1).offset,start=run.time_range[0];
+const cameraIds=run.cameras.map(camera=>camera.id);
+const steering=run.scenario==='car_steering_drift';
+const title=steering?'03 / Steering off course':'04 / Braking too late';
+el('scenario').textContent='Original attempt · '+(steering?'Lane following':'Automatic braking');
+el('title').textContent=title;document.title='RealityPatch · '+title;
+el('objective').textContent=run.task.objective||(steering?'Follow the marked lane through the bend and cross the finish line.':'Approach the barrier and stop with clearance.');
+el('goalLabel').textContent=run.task.goal_label||(steering?'Reach the green finish gate':'Stop in the marked zone before the wall');
+el('scrub').max=end;
+el('preparation').textContent=run.preparation.recorded_steps?`Approach begins after ${start.toFixed(1)} s of recorded preparation. Conditioning and explicit resets are included in telemetry/history; this film shows the approach.`:'The car starts on the lane with its original steering response. No crash or repositioning precedes this attempt.';
+el('foot').textContent=`Captured MuJoCo ${run.engine.version} physics · ${run.fps} frames/s · Both cameras share identical capture times · Run ${run.run_id.slice(0,12)}. Playback is local and makes no model calls.`;
+let camera=cameraIds[0],t=0,playing=false,last=0,loop=null,index=0,serial=0;
+const prettify=s=>String(s).replaceAll('_',' ').replace(/^./,c=>c.toUpperCase());
+const failure=run.events.find(e=>/lane_exit|sustained.*departure|lane_departure|barrier_contact|barrier_impact|collision/.test(e.event));
+const failureTime=failure?Math.max(0,failure.time):end;
+el('inspect').disabled=!failure;
+const cameraButtons=cameraIds.map(name=>{const b=document.createElement('button');b.textContent=prettify(name);b.addEventListener('click',()=>{camera=name;render()});el('cameras').append(b);return b});
+const visibleEvents=run.events;
+const eventButtons=visibleEvents.map(e=>{const b=document.createElement('button');b.className='event';const tm=document.createElement('time'),label=document.createElement('span');tm.textContent=Math.max(0,e.time).toFixed(2)+' s';label.textContent=prettify(e.event);b.append(tm,label);b.onclick=()=>{pause();loop=null;seek(e.time)};el('events').append(b);return b});
+if(!visibleEvents.length)el('events').textContent='No observed event markers.';
+const speed=o=>typeof o.speed==='number'?o.speed:Math.hypot(...(o.velocity||[0,0,0]));
+const speeds=frames.map(f=>speed(f.observation)),maxSpeed=Math.max(1,...speeds);
+el('speedPath').setAttribute('d',frames.map((f,i)=>(i?'L':'M')+(230*f.offset/(end||1)).toFixed(2)+','+(59-54*speeds[i]/maxSpeed).toFixed(2)).join(' '));
+function frameAt(time){let lo=0,hi=frames.length-1;while(lo<hi){const mid=Math.ceil((lo+hi)/2);if(frames[mid].offset<=time+1e-8)lo=mid;else hi=mid-1}return lo}
+function pause(){playing=false;el('play').textContent=t>=end?'Replay failure':'Play failure'}
+function seek(value){t=Math.min(end,Math.max(0,value));if(end-t<1e-7)t=end;render()}
+function metric(label,value){const row=document.createElement('div');row.className='metric';const text=document.createElement('span'),v=document.createElement('strong');text.textContent=label;v.textContent=value;row.append(text,v);return row}
+function value(o,keys){for(const key of keys)if(typeof o[key]==='number')return o[key];return null}
+function fmt(v,unit='',digits=2){return v===null?'—':v.toFixed(digits)+unit}
+function render(){
+ index=frameAt(t);const frame=frames[index],o=frame.observation;const path=frame.files[camera];
+ if(el('frame').getAttribute('src')!==path){const token=++serial;const image=new Image();image.onload=()=>{if(token===serial){el('frame').src=path;el('missing').hidden=true}};image.onerror=()=>{if(token===serial){pause();el('missing').hidden=false}};image.src=path}
+ cameraButtons.forEach((b,i)=>b.setAttribute('aria-pressed',String(cameraIds[i]===camera)));
+ el('viewTag').textContent=prettify(camera).toUpperCase()+' · RECORDED';
+ const presentation=frame.presentation||(t>=end?run.conclusion:null);
+ const failed=presentation?/FAILED|INCOMPLETE|OFF COURSE/i.test(presentation.status):failure&&t>=failureTime;
+ const succeeded=presentation&&/^(SUCCESS\b|FINISH GATE REACHED$|COURSE COMPLETE$)/i.test(presentation.status)&&!failed;
+ el('status').className='status'+(failed?' failed':succeeded?' success':'')+(t>=end?' ended':'');
+ el('statusTitle').textContent=presentation?.status||(t===0?'READY - '+(steering?'Reach the finish gate':'Stop before the barrier'):failed?'FAILED - '+(steering?'Vehicle left the lane':'Barrier collision'):prettify(o.phase||'approach'));
+ el('statusDetail').textContent=presentation?.detail||(t>=end?'Attempt ended. Replay to inspect what went wrong.':'');
+ el('scrub').value=t;el('time').textContent=`${frame.offset.toFixed(2)} / ${end.toFixed(2)} s`;
+ const metrics=[metric('Speed',fmt(speed(o),' m/s'))];
+ if(steering){const command=o.command?.steering??o.steering_command??null;const angle=Array.isArray(o.steering_angle)?o.steering_angle[0]:Array.isArray(o.steering_angles)?o.steering_angles[0]:value(o,['observed_steering_angle','steering_angle']);metrics.push(metric('Lane error',fmt(value(o,['lateral_error','centerline_error']),' m')),metric('Steering command',fmt(command===null?null:command*180/Math.PI,'°',1)),metric('Wheel angle',fmt(angle===null?null:angle*180/Math.PI,'°',1)))}
+ else{metrics.push(metric('Bumper clearance',fmt(value(o,['bumper_clearance','wall_clearance','clearance']),' m')),metric('Brake pedal',fmt((o.brake??o.command?.brake??0)*100,'%',0)),metric('Contact',o.wall_contact||o.collision?'Yes':'No'))}
+ el('metrics').replaceChildren(...metrics);el('cursor').setAttribute('x1',230*t/(end||1));el('cursor').setAttribute('x2',230*t/(end||1));
+ eventButtons.forEach((b,i)=>b.classList.toggle('active',visibleEvents[i].time<=t+1e-7));
+ el('inspect').setAttribute('aria-pressed',String(Boolean(loop)));el('loopState').textContent=loop?`Looping ${loop[0].toFixed(2)}–${loop[1].toFixed(2)} s around the recorded failure. Restart returns to the whole run.`:'';
+ if(!playing)el('play').textContent=t>=end?'Replay failure':'Play failure';
+}
+function toggle(){if(playing){pause()}else{if(t>=end)t=loop?loop[0]:0;playing=true;last=performance.now();el('play').textContent='Pause'}render()}
+el('play').onclick=toggle;el('restart').onclick=()=>{pause();loop=null;seek(0)};
+function step(delta){pause();loop=null;seek(frames[Math.max(0,Math.min(frames.length-1,index+delta))].offset)}
+el('prev').onclick=()=>step(-1);el('next').onclick=()=>step(1);
+el('scrub').oninput=e=>{pause();loop=null;seek(Number(e.target.value))};
+el('inspect').onclick=()=>{if(loop){loop=null;render();return}loop=[Math.max(0,failureTime-2),Math.min(end,failureTime+1)];t=loop[0];playing=true;last=performance.now();el('play').textContent='Pause';render()};
+document.addEventListener('keydown',e=>{if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;const k=e.key.toLowerCase();if(k===' '&&['BUTTON','A'].includes(e.target.tagName))return;if(k===' '){e.preventDefault();toggle()}else if(k==='arrowleft'){e.preventDefault();step(-1)}else if(k==='arrowright'){e.preventDefault();step(1)}else if(k==='home'){e.preventDefault();el('restart').click()}else if(k==='c'){camera=cameraIds[(cameraIds.indexOf(camera)+1)%cameraIds.length];render()}else if(['-','+','='].includes(k)){const r=el('rate');r.selectedIndex=Math.max(0,Math.min(r.options.length-1,r.selectedIndex+(k==='-'?-1:1)))}});
+function tick(now){if(playing){t+=Math.min(.25,(now-last)/1000)*Number(el('rate').value);if(loop&&t>=loop[1])t=loop[0];else if(t>=end){t=end;pause()}render()}last=now;requestAnimationFrame(tick)}
+render();requestAnimationFrame(tick);
+</script>
+</body></html>

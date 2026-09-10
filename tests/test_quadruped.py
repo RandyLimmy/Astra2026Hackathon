@@ -37,7 +37,7 @@ class QuadrupedScenarioTests(unittest.TestCase):
         cls.runs = {}
         cls.prefixes = {}
         for name, overrides in PRESETS.items():
-            if name.endswith("_demo"):
+            if name.endswith("_demo") or name == "quadruped_gait_failure":
                 continue  # These regressions compare the original shared five-second prefix.
             sim = Simulation(Config(**overrides))
             advance(sim, sim.config.fault_at)
@@ -116,7 +116,7 @@ class QuadrupedScenarioTests(unittest.TestCase):
 class QuadrupedInterventionTests(unittest.TestCase):
     def test_reset_trial_retains_each_fault_and_full_reset_replays(self):
         for name, overrides in PRESETS.items():
-            if name == "quadruped_walk":
+            if name in ("quadruped_walk", "quadruped_gait_failure"):
                 continue
             with self.subTest(name=name):
                 config = Config(**{**overrides, "fault_at": 0.1, "duration": 0.5})

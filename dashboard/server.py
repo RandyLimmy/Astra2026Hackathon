@@ -390,6 +390,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             parsed = urlsplit(self.path)
             parts = unquote(parsed.path).strip("/").split("/")
             app = self.server.dashboard
+            if parts[:2] == ["api", "scenarios"]:
+                from .scenarios import listing, media_path
+                if len(parts) == 2:
+                    return self._json(200, listing(app))
+                if len(parts) >= 6 and parts[3] == "recordings":
+                    return self._file(media_path(app, parts[2], parts[4], parts[5:]))
+                raise RequestError(404, "Scenario endpoint not found.")
             if parts == ["api", "runs"]:
                 return self._json(200, app.list_runs())
             if parts[:2] == ["api", "runs"] and len(parts) >= 3:

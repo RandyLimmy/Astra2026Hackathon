@@ -69,7 +69,7 @@ class DronePhysicsTests(unittest.TestCase):
         for name, values in PRESETS.items():
             # These regression assertions freeze the original 12 s / 3 s-onset
             # failure matrix; presentation routes have separate coverage.
-            if name == "drone_demo":
+            if values.get("probe", "maneuver") not in ("hover", "maneuver"):
                 continue
             sim = Simulation(Config(**values))
             prefix = []
