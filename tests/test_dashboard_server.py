@@ -106,14 +106,14 @@ def test_live_status_counts_and_partial_files_are_pollable(recorded):
     (run / "metadata.json").write_text('{"status":')
     with (run / "events.jsonl").open("a") as stream:
         stream.write(json.dumps({"type": "status", "timestamp": "2026-09-10T17:06:00Z",
-                                 "message": "API request 4/12: Astra / medium."}) + "\n")
+                                 "message": "API request 4/12: Astra / xhigh."}) + "\n")
         stream.write('{"type": "tool_call"')
     dashboard = Dashboard(root)
     summary = dashboard.summary(run.name)
     assert summary["api_requests"] == 4
     assert summary["tool_calls"] == 1
     assert summary["status"] == "running" and summary["active"]
-    assert summary["latest_status"] == "API request 4/12: Astra / medium."
+    assert summary["latest_status"] == "API request 4/12: Astra / xhigh."
     assert dashboard.detail(run.name)["evaluation"] is None
     with (run / "events.jsonl").open("a") as stream:
         stream.write('\n' + json.dumps({"type": "status", "message": "Evaluation: prediction_locked"}) + '\n')
@@ -158,16 +158,16 @@ def test_fixed_profile_launch_is_single_and_does_not_precreate_run_directory(tmp
     assert dashboard.list_runs()["active_run_id"] == result["id"]
     assert dashboard.detail(result["id"])["metadata"]["reasoning_effort"] == "high"
     with pytest.raises(RequestError) as error:
-        dashboard.start_run({"profile": "astra-medium"})
+        dashboard.start_run({"profile": "astra-xhigh"})
     assert error.value.status == 409
     launcher.returncode = 1
     assert dashboard.summary(result["id"])["status"] == "failed"
     assert dashboard.list_runs()["active_run_id"] is None
-    dashboard.start_run({"profile": "astra-medium"})
+    dashboard.start_run({"profile": "astra-xhigh"})
     assert len(launcher.calls) == 2
 
 
-@pytest.mark.parametrize("body", [{"profile": "anything"}, {"profile": []}, {}, {"profile": "astra-medium", "output": "/tmp/no"}, []])
+@pytest.mark.parametrize("body", [{"profile": "anything"}, {"profile": []}, {}, {"profile": "astra-xhigh", "output": "/tmp/no"}, []])
 def test_launcher_rejects_arbitrary_arguments(tmp_path, body):
     launcher = Launcher()
     with pytest.raises(RequestError) as error:
@@ -182,7 +182,7 @@ def test_existing_external_run_prevents_new_launch(recorded):
     save(run / "metadata.json", {"status": "running"})
     launcher = Launcher()
     with pytest.raises(RequestError) as error:
-        Dashboard(root, launcher).start_run({"profile": "astra-medium"})
+        Dashboard(root, launcher).start_run({"profile": "astra-xhigh"})
     assert error.value.status == 409 and not launcher.calls
 
 
@@ -202,7 +202,7 @@ def test_http_serves_built_spa_and_rejects_private_paths(http_server):
 
 def test_http_post_checks_origin_json_and_body_limit(http_server):
     _, launcher, server, request = http_server
-    body = json.dumps({"profile": "astra-medium"})
+    body = json.dumps({"profile": "astra-xhigh"})
     headers = {"Content-Type": "application/json", "Origin": f"http://127.0.0.1:{server.server_port}"}
     assert request("POST", "/api/runs", body, {**headers, "Origin": "https://elsewhere.example"})[0] == 403
     assert request("POST", "/api/runs", body, {**headers, "Sec-Fetch-Site": "cross-site"})[0] == 403
@@ -258,7 +258,7 @@ def test_media_queue_is_separate_from_api_job_and_serialized(tmp_path):
         return child
 
     dashboard = Dashboard(tmp_path, launch, monitor_jobs=False)
-    first = dashboard.start_run({"profile": "astra-medium"})["id"]
+    first = dashboard.start_run({"profile": "astra-xhigh"})["id"]
     save(tmp_path / "runs" / first / "metadata.json", {"status": "completed"})
     children[0].returncode = 0
     dashboard.advance_jobs()

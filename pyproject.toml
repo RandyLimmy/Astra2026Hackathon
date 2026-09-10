@@ -21,8 +21,9 @@ dependencies = [
 dev = ["pytest==9.1.1"]
 
 [project.scripts]
-realitypatch = "sim.cli:main"
+realitypatch = "simulator.__main__:main"
 realitypatch-car = "simulator.__main__:main"
+realitypatch-rig = "sim.cli:main"
 realitypatch-astra = "investigation.__main__:main"
 realitypatch-dashboard = "dashboard.__main__:main"
 

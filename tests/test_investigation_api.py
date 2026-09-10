@@ -60,7 +60,7 @@ class Broker:
         return {"tool_calls": {"used": len(self.calls), "limit": 30}}
 
 
-def response(output, *, status="completed", model=MODEL, reasoning_effort="medium"):
+def response(output, *, status="completed", model=MODEL, reasoning_effort="xhigh"):
     return SimpleNamespace(id="response_test", model=model, reasoning=SimpleNamespace(effort=reasoning_effort),
                            status=status, output=output, usage=None)
 
@@ -69,12 +69,12 @@ def call(name, arguments):
     return Item(type="function_call", name=name, arguments=json.dumps(arguments), call_id="call_" + name)
 
 
-def test_every_request_pins_astra_medium_and_preserves_stateless_reasoning():
+def test_every_request_pins_astra_xhigh_and_preserves_stateless_reasoning():
     client = Client([None])
     request_response(client, [{"role": "user", "content": "test"}], [])
     actual = client.requests[0]
     assert actual["model"] == "gpt-6-astra"
-    assert actual["reasoning"] == {"effort": "medium", "summary": "auto"}
+    assert actual["reasoning"] == {"effort": "xhigh", "summary": "auto"}
     assert actual["store"] is False
     assert actual["include"] == ["reasoning.encrypted_content"]
     assert actual["parallel_tool_calls"] is False
@@ -85,12 +85,12 @@ def test_config_uses_one_key_without_exposing_it_in_repr(tmp_path, monkeypatch):
     for name in ("OPENAI_API_KEY", "ASTRA_MODEL", "ASTRA_REASONING_EFFORT"):
         monkeypatch.delenv(name, raising=False)
     path = tmp_path / ".env"
-    path.write_text("OPENAI_API_KEY=synthetic-secret-only\nASTRA_MODEL=gpt-6-astra\nASTRA_REASONING_EFFORT=medium\n")
+    path.write_text("OPENAI_API_KEY=synthetic-secret-only\nASTRA_MODEL=gpt-6-astra\nASTRA_REASONING_EFFORT=xhigh\n")
     settings = Settings.load(path)
     assert settings.api_key == "synthetic-secret-only"
     assert "synthetic-secret-only" not in repr(settings)
     path.write_text("OPENAI_API_KEY=synthetic-secret-only\nASTRA_REASONING_EFFORT=low\n")
-    with pytest.raises(ValueError, match="medium"):
+    with pytest.raises(ValueError, match="xhigh"):
         Settings.load(path)
 
 
@@ -252,7 +252,7 @@ def test_debrief_only_receives_frozen_public_feedback_with_tools_disabled(tmp_pa
     assert final["max_output_tokens"] == 2048
     for request in client.requests:
         assert request["model"] == "gpt-6-astra"
-        assert request["reasoning"] == {"effort": "medium", "summary": "auto"}
+        assert request["reasoning"] == {"effort": "xhigh", "summary": "auto"}
         assert request["store"] is False
         assert request["parallel_tool_calls"] is False
     content = final["input"][-1]["content"]
@@ -420,7 +420,7 @@ def test_sol_session_and_debrief_verify_selected_pair_and_use_generic_labels(tmp
     assert "Astra" not in printed
 
 
-@pytest.mark.parametrize("returned_model,returned_effort", [(MODEL, "medium"), ("gpt-5.6-sol", "medium")])
+@pytest.mark.parametrize("returned_model,returned_effort", [(MODEL, "xhigh"), ("gpt-5.6-sol", "medium")])
 def test_sol_session_rejects_wrong_model_or_reasoning_without_fallback(tmp_path, returned_model, returned_effort):
     broker = Broker(tmp_path)
     client = Client([response([call("submit_prediction", {"rationale": "Do not execute."})],
@@ -437,7 +437,7 @@ def test_sol_session_rejects_wrong_model_or_reasoning_without_fallback(tmp_path,
 
 def test_protocol_fingerprint_matches_across_profiles_and_excludes_run_identity(tmp_path):
     results = []
-    for profile, model, effort in (("astra-medium", MODEL, "medium"), ("sol-high", "gpt-5.6-sol", "high")):
+    for profile, model, effort in (("astra-xhigh", MODEL, "xhigh"), ("sol-high", "gpt-5.6-sol", "high")):
         directory = tmp_path / profile
         broker = Broker(directory)
         client = Client([response([call("submit_prediction", {"rationale": "Ready."})],
@@ -447,7 +447,7 @@ def test_protocol_fingerprint_matches_across_profiles_and_excludes_run_identity(
     assert results[0]["protocol_fingerprint"] == results[1]["protocol_fingerprint"]
     assert results[0]["protocol_manifest"] == results[1]["protocol_manifest"]
     serialized = json.dumps(results[0]["protocol_manifest"])
-    assert "astra-medium" not in serialized
+    assert "astra-xhigh" not in serialized
     assert "sol-high" not in serialized
     assert str(tmp_path) not in serialized
     assert "run_id" not in serialized

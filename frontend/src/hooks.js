@@ -1,53 +1,62 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { request, runPath } from './api.js';
 
 export function useRuns() {
   const [data, setData] = useState({ runs: [], active_run_id: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const latestRequest = useRef(0);
   const refresh = useCallback(async () => {
+    const requestId = ++latestRequest.current;
     try {
       const next = await request('/api/runs');
+      if (requestId !== latestRequest.current) return;
       setData(next);
       setError('');
     } catch (failure) {
-      setError(failure.message);
+      if (requestId === latestRequest.current) setError(failure.message);
     } finally {
-      setLoading(false);
+      if (requestId === latestRequest.current) setLoading(false);
     }
   }, []);
   useEffect(() => {
-    refresh();
-    const timer = setInterval(refresh, 3000);
-    return () => clearInterval(timer);
+    let cancelled = false;
+    let timer;
+    async function poll() {
+      await refresh();
+      if (!cancelled) timer = setTimeout(poll, 3000);
+    }
+    poll();
+    return () => { cancelled = true; ++latestRequest.current; clearTimeout(timer); };
   }, [refresh]);
   return { ...data, loading, error, refresh };
 }
 
 export function useRun(id) {
-  const [run, setRun] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [state, setState] = useState({ id, run: null, loading: Boolean(id), error: '' });
   useEffect(() => {
-    setRun(null);
-    setError('');
+    setState({ id, run: null, loading: Boolean(id), error: '' });
     if (!id) return;
     let cancelled = false;
+    let timer;
     const controller = new AbortController();
-    setLoading(true);
     async function refresh() {
       try {
         const next = await request(runPath(id), { signal: controller.signal });
-        if (!cancelled) { setRun(next); setError(''); }
+        if (next.id !== id) throw new Error('The server returned a different experiment.');
+        if (!cancelled) setState({ id, run: next, loading: false, error: '' });
       } catch (failure) {
-        if (!cancelled && failure.name !== 'AbortError') setError(failure.message);
+        if (!cancelled && failure.name !== 'AbortError') {
+          setState(current => ({ ...current, loading: false, error: failure.message }));
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        // Serial polling prevents a slow older response from replacing newer run state.
+        if (!cancelled) timer = setTimeout(refresh, 3000);
       }
     }
     refresh();
-    const timer = setInterval(refresh, 3000);
-    return () => { cancelled = true; controller.abort(); clearInterval(timer); };
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer); };
   }, [id]);
-  return { run, loading, error };
+  // Effects run after render, so hide the previous run immediately on selection.
+  return state.id === id ? state : { run: null, loading: Boolean(id), error: '' };
 }

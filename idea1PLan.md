@@ -4,6 +4,23 @@ Based on [idea1.md](idea1.md) and [idea1UseCases.md](idea1UseCases.md).
 
 This is a **builder-facing plan**, incorporating the later bumper-impact walkthrough and requirement to keep the reference implementation hidden. Do not include this document, the original ideas, or the pasted walkthrough in the investigation agent's context. Brake fade remains the first committed build; the bumper example below is a separate optional scenario, not an additional first-demo requirement.
 
+## Current tooling milestone
+
+The teammate's improved car, drone and robot dog have been merged. Current work
+focuses on **Astra tooling only**; frontend simplification and further Sol runs
+are deferred. [ASTRA_TOOLING.md](docs/ASTRA_TOOLING.md) is the current contract for
+the 12 platform tools: inspection, probes, reliable complete-source replacement,
+source rollback, bounded component maintenance and fresh verification. The older
+seven-tool tables below describe the original brake experiment; that broker now
+also accepts complete-source replacement with a current hash.
+
+Physical maintenance is a new, separate capability. It changes the simulated
+machine, whereas the original source-extension experiment changes its predictive
+actuator. Keep those outcomes distinct, retain the hidden-reference boundary,
+and verify interventions through measurements. Person 1 owns physical fault and
+maintenance semantics; Person 2 owns neutral tool contracts, source isolation,
+Astra integration and evaluation records.
+
 ## 1. What we are building
 
 Start with **use case 3: brake fade**. RealityPatch investigates why a simple braking simulator predicts the wrong stopping distance, requests experiments, adds missing history-dependent behavior to the simulator's code, and predicts an unseen braking trial before its result is revealed.
@@ -18,7 +35,7 @@ This approach best matches our intended **source-code extension** contribution. 
 
 The repair improves the prediction; it does not physically improve the brakes. On the final trial, show the original prediction, repaired prediction, and actual reference trajectory for the same commands. A later feature could use the improved model to recommend earlier braking.
 
-The first mechanics foundation and the teammate's richer car simulator are now integrated; see [README.md](README.md) for setup and run commands. The four-wheel car executes an editable `wheel_v2` Python actuator in the isolated macOS worker. Candidate and reference replay the same public preparation commands/resets while evolving their own state; candidate predictions and source hashes are saved before the reference trial starts. Baseline, brake fade and recovery are the first comparison targets. Other reference scenarios are available, but repairs to mass, road contact or attachments still need additional component contracts. The original one-axis rig, development parameter fit and native replay remain available. The stateful solvability checks remain explicitly labeled developer-written. The seven-tool API investigation loop and frozen prediction/reveal evaluation are now implemented in `investigation/`; the loop uses a fresh API context containing neutral prompts, the incomplete component, and permitted measurements. It is pinned to `gpt-6-astra` with `reasoning.effort="medium"`, using the single `OPENAI_API_KEY`. The second fixed profile is now `sol-high` (`gpt-5.6-sol` with high reasoning), using the same key. Run `.venv/bin/python -m investigation` (or add `--profile sol-high`) to create a report with exact prompts, stated explanations, tool actions, source versions and measured reserved-case errors. A basic local white dashboard now shows car replay, recorded trajectories, investigator activity, prompts, source changes and model comparison; it can launch a bounded investigation. Start it with `.venv/bin/python -m dashboard` after building `frontend/`. Richer physical scenario controls and lateral disturbance remain future work. The scalar model sections below retain the original prototype design; the current car uses the four-wheel contract in `contracts/WHEEL_ACTUATOR.md`.
+The first mechanics foundation and the teammate's richer car simulator are now integrated; see [README.md](README.md) for setup and run commands. The four-wheel car executes an editable `wheel_v2` Python actuator in the isolated macOS worker. Candidate and reference replay the same public preparation commands/resets while evolving their own state; candidate predictions and source hashes are saved before the reference trial starts. Baseline, brake fade and recovery are the first comparison targets. Other reference scenarios are available, but repairs to mass, road contact or attachments still need additional component contracts. The original one-axis rig, development parameter fit and native replay remain available. The stateful solvability checks remain explicitly labeled developer-written. The seven-tool API investigation loop and frozen prediction/reveal evaluation are now implemented in `investigation/`; the loop uses a fresh API context containing neutral prompts, the incomplete component, and permitted measurements. It is pinned to `gpt-6-astra` with `reasoning.effort="xhigh"`, using the single `OPENAI_API_KEY`. The second fixed profile is now `sol-high` (`gpt-5.6-sol` with high reasoning), using the same key. Run `.venv/bin/python -m investigation` (or add `--profile sol-high`) to create a report with exact prompts, stated explanations, tool actions, source versions and measured reserved-case errors. A basic local white dashboard now shows car replay, recorded trajectories, investigator activity, prompts, source changes and model comparison; it can launch a bounded investigation. Start it with `.venv/bin/python -m dashboard` after building `frontend/`. Richer physical scenario controls and lateral disturbance remain future work. The scalar model sections below retain the original prototype design; the current car uses the four-wheel contract in `contracts/WHEEL_ACTUATOR.md`.
 
 This plan assumes two builders and uses a **five-hour working timebox**, not a confirmed event deadline. If there is more time, expand validation before adding another use case. Person 1 and Person 2 below are interchangeable role assignments based on your strengths.
 
@@ -30,7 +47,7 @@ This plan assumes two builders and uses a **five-hour working timebox**, not a c
 - Keep the key in the host environment or a local ignored `.env` loaded by the backend. The repository's `.gitignore` excludes `.env` and `.env.*` while allowing a placeholder-only `.env.example`; Person 2 owns maintaining those rules and creating the example. Keep real keys out of Git, frontend code, run logs, and the generated-code sandbox, following [OpenAI's authentication guidance](https://developers.openai.com/api/reference/overview#authentication).
 - Record the working model IDs and a successful request/tool-response check, without recording the credential. Person 1 can keep building the simulator with fake fixtures while access is being configured.
 
-Current setup: the local ignored `.env` contains the team's key, and a live request has confirmed `gpt-6-astra` with medium reasoning. `ASTRA_MODEL=gpt-6-astra` and `ASTRA_REASONING_EFFORT=medium` are configuration values, not extra credentials. A live check has also confirmed access to `gpt-5.6-sol` at high reasoning; both profiles use that same key. Actual investigation outcomes must come from the saved run reports; connection success alone does not establish a successful repair.
+Current setup: the local ignored `.env` contains the team's key. Earlier live requests confirmed `gpt-6-astra` with medium reasoning; new Astra runs are now configured for extra high reasoning. `ASTRA_MODEL=gpt-6-astra` and `ASTRA_REASONING_EFFORT=xhigh` are configuration values, not extra credentials. A live check has also confirmed access to `gpt-5.6-sol` at high reasoning; both profiles use that same key. Actual investigation outcomes must come from the saved run reports; connection success alone does not establish a successful repair.
 
 ## 2. Scope and completion criteria
 

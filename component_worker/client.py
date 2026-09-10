@@ -138,6 +138,8 @@ class ActuatorWorker:
     """
 
     _protocol = "scalar_v1"
+    _runtime_filename = "runtime.py"
+    _extra_safe_reasons: dict[str, str] = {}
 
     def __init__(self, source_path: Path, timeout_s: float = 2.0, sandbox: bool = True):
         self.timeout_s = _finite(timeout_s, "Request timeout", lower=0.01, upper=60)
@@ -164,7 +166,7 @@ class ActuatorWorker:
             self._temporary = tempfile.TemporaryDirectory(prefix="actuator-")
             workspace = Path(self._temporary.name).resolve()
             (workspace / "actuator.py").write_bytes(source)
-            shutil.copyfile(Path(__file__).with_name("runtime.py"), workspace / "runtime.py")
+            shutil.copyfile(Path(__file__).with_name(self._runtime_filename), workspace / "runtime.py")
             executable = Path(getattr(sys, "_base_executable", sys.executable)).resolve()
             # Framework builds ship a launcher which posix_spawns this binary.
             # Execute it directly so process creation remains denied throughout.
@@ -285,24 +287,28 @@ class ActuatorWorker:
                     "candidate_error": "Actuator computation failed.",
                     "runtime_error": "Actuator runtime rejected the request.",
                 }
+                safe_reasons.update(self._extra_safe_reasons)
                 source_line = result.get("source_line")
                 if type(source_line) is not int or not 1 <= source_line <= self._source_line_count:
                     source_line = None
                 raise WorkerError(safe_reasons.get(reason, "Actuator computation failed."), source_line=source_line)
             value = result.get("value")
-            if operation == "force":
-                return _finite(value, "Braking force", lower=0)
-            if operation == "torque_limits" and self._protocol == "wheel_v2":
-                return _vector4(value, "Wheel torque limits", lower=0)
-            if operation in {"reset", "inspect", "advance"} or (operation == "reposition" and self._protocol == "wheel_v2"):
-                return _check_state(value)
-            raise WorkerError("Unknown actuator operation.")
+            return self._validate_response(operation, value)
         except WorkerError:
             self.close()
             raise
         except Exception:
             self.close()
             raise WorkerError("Isolated actuator communication failed.") from None
+
+    def _validate_response(self, operation: str, value: object) -> object:
+        if operation == "force":
+            return _finite(value, "Braking force", lower=0)
+        if operation == "torque_limits" and self._protocol == "wheel_v2":
+            return _vector4(value, "Wheel torque limits", lower=0)
+        if operation in {"reset", "inspect", "advance"} or (operation == "reposition" and self._protocol == "wheel_v2"):
+            return _check_state(value)
+        raise WorkerError("Unknown actuator operation.")
 
     def force(self, brake: float, velocity: float) -> float:
         return cast(float, self._request("force", brake=_finite(brake, "Brake command", lower=0, upper=1),

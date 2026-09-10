@@ -1,5 +1,12 @@
 # RealityPatch
 
+The teammate's car simulator in `simulator/` is the preferred car implementation.
+Use it for car scenarios, demos and investigations. The main `realitypatch`
+command opens this simulator; `realitypatch-car` is an alias. Our original
+one-axis rig in `sim/` is a secondary benchmark, available as `realitypatch-rig`.
+The dashboard and braking investigation already use the teammate's four-wheel
+car with the editable Python component.
+
 Three additional simulator platforms are available: **post-crash car damage**,
 **quadruped body faults**, and **quadrotor degradation**. They include sixteen
 presets, controlled probes, recordings and nominal-before-reality comparisons.
@@ -28,6 +35,23 @@ which tools it used, the exact source changes, and measured prediction errors.
 Check that run's report for its outcome; having the loop implemented does not
 establish that a repair succeeded.
 
+## Astra tooling for car, drone and robot dog
+
+The new [tooling guide](docs/ASTRA_TOOLING.md) covers public inspection, diagnostic
+experiments, isolated Python model editing, targeted component maintenance and
+fresh-specimen verification. This workflow is pinned to **Astra / extra high** and
+uses the existing key. Frontend changes and further Sol work are deferred.
+
+```sh
+.venv/bin/python -m investigation.platform_run --platform car --output runs/tooling/car-001 --no-frames
+```
+
+Use `--platform drone` or `--platform quadruped` with a new output directory for
+the other machines. A repair receipt is followed by measured checks; model edits
+and physical maintenance are recorded separately. Full-source replacement with
+a current hash avoids the unified-diff formatting issue observed in the first
+comparison. The original brake-fade workflow remains available below.
+
 ## Open the dashboard
 
 From the repository root, with the [Python environment](#setup-and-checks) installed
@@ -48,7 +72,7 @@ original, candidate and reference cars with synchronized telemetry and recorded
 MuJoCo frames. Frames are rendered from saved commands and frozen source; they
 are published only after their outcome matches the recorded evaluation.
 
-Select **Astra / medium** or **Sol / high**, then click **Start run**. This starts a fresh
+Select **Astra / extra high** or **Sol / high**, then click **Start run**. This starts a fresh
 API investigation with the configured key, a limit of **12 API requests** and a
 **1,800-second investigation budget**. The dashboard launches one investigation
 at a time. Results appear when evaluation finishes; frame generation runs in the
@@ -93,7 +117,7 @@ the API investigations below.
 
 ## Run an investigation from the terminal
 
-The default profile is **`astra-medium`**, which uses **`gpt-6-astra` with `medium`
+The default profile is **`astra-xhigh`**, which uses **`gpt-6-astra` with `xhigh`
 reasoning** through the OpenAI Responses API. Select **`--profile sol-high`** to
 use **`gpt-5.6-sol` with `high` reasoning**. Both use the same `OPENAI_API_KEY`, which
 must have access to the selected model. Configure
@@ -104,7 +128,7 @@ the selected profile; optional environment settings must match it:
 ```dotenv
 OPENAI_API_KEY=your-project-key
 ASTRA_MODEL=gpt-6-astra
-ASTRA_REASONING_EFFORT=medium
+ASTRA_REASONING_EFFORT=xhigh
 SOL_MODEL=gpt-5.6-sol
 SOL_REASONING_EFFORT=high
 ```
@@ -117,10 +141,10 @@ and are not supplied to the candidate worker. Simulator-only commands do not
 load `.env` or make API requests.
 
 ```sh
-# Make one small request with the default Astra/medium profile.
+# Make one small request with the default Astra/extra-high profile.
 .venv/bin/python -m investigation --check-key
 
-# Run a fresh Astra/medium investigation in a unique directory under runs/.
+# Run a fresh Astra/extra-high investigation in a unique directory under runs/.
 .venv/bin/python -m investigation
 
 # Run a fresh Sol/high investigation with the same configured API key.
@@ -203,6 +227,9 @@ API-authored repair.
 The local `.venv` is installed. From this repository:
 
 ```sh
+# List the teammate's car scenarios and additional platforms.
+.venv/bin/realitypatch list
+
 # Compare the isolated baseline component with the healthy car.
 .venv/bin/python -m simulator compare baseline
 
@@ -327,8 +354,12 @@ For the more expensive reference-physics matrix:
 
 ## Original small rig
 
+Use the explicit `realitypatch-rig` command for the original benchmark. Existing
+`python -m sim.cli` commands still work; `realitypatch` now uses the teammate's
+simulator and its `run`, `compare`, and `view` commands.
+
 ```sh
-.venv/bin/python -m sim.cli demo --developer-check
+.venv/bin/realitypatch-rig demo --developer-check
 .venv/bin/mjpython -m sim.cli view artifacts/latest/repeated.json
 ```
 

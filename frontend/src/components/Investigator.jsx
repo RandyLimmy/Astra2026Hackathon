@@ -26,10 +26,10 @@ function JsonDetails({ label, value }) {
   return <details className="payload-details" onToggle={event => setOpen(event.currentTarget.open)}><summary>{label}<Chevron size={14} /></summary>{open && <pre>{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>}</details>;
 }
 
-function ActivityItem({ event, initiallyOpen = false }) {
-  const [open, setOpen] = useState(initiallyOpen);
+function ActivityItem({ event }) {
+  const [open, setOpen] = useState(false);
   if (event.type === 'status' || event.type === 'error') return <div className={`activity-status ${event.type === 'error' ? 'text-fail' : ''}`}>{event.message}</div>;
-  if (event.type === 'assistant_message' || event.type === 'reasoning_summary') return <div className="activity-message"><div className="activity-label">{event.type === 'assistant_message' ? 'Explanation' : 'Brief reasoning summary'}</div><p>{event.text}</p></div>;
+  if (event.type === 'assistant_message' || event.type === 'reasoning_summary') return <details className="activity-message"><summary><span>{event.type === 'assistant_message' ? 'Explanation' : 'Reasoning summary'}</span><Chevron /></summary><p>{event.text}</p></details>;
   const description = event.arguments?.hypothesis || event.arguments?.rationale;
   const failed = event.result?.ok === false || event.result?.error;
   return <details className="activity-tool" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
@@ -71,7 +71,7 @@ export default function Investigator({ run, tab, setTab }) {
     <h2 id="investigator-title">Investigator</h2>
     <div className="tabs" role="tablist" aria-label="Investigation context">{['activity', 'code', 'prompts'].map(item => <button key={item} id={`tab-${item}`} type="button" role="tab" aria-selected={tab === item} aria-controls={`panel-${item}`} className={tab === item ? 'selected' : ''} onClick={() => setTab(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div>
     <div className="context-content" id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
-      {tab === 'activity' && (rows.length ? <div className="activity-list">{rows.map((event, index) => <ActivityItem key={`${event.timestamp}-${event.type}-${index}`} event={event} initiallyOpen={index === rows.findIndex(row => row.type === 'tool_call')} />)}</div> : <div className="context-empty">{run?.active ? 'Preparing the initial experiments. Investigator activity will appear here as it runs.' : 'No investigator activity has been recorded for this run.'}</div>)}
+      {tab === 'activity' && (rows.length ? <div className="activity-list">{rows.map((event, index) => <ActivityItem key={`${event.timestamp}-${event.type}-${index}`} event={event} />)}</div> : <div className="context-empty">{run?.active ? 'Preparing the initial experiments. Investigator activity will appear here as it runs.' : 'No investigator activity has been recorded for this run.'}</div>)}
       {tab === 'code' && <SourceView artifacts={artifacts} />}
       {tab === 'prompts' && <PromptView artifacts={artifacts} />}
     </div>
