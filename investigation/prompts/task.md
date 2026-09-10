@@ -17,7 +17,10 @@ are controllable. A preparation cycle accelerates from rest to approximately
 25 m/s, then brakes to rest, within fixed time limits. The final trial resets to
 the requested speed. Component state persists across declared repositionings.
 
-Budgets: six additional measured experiments, three patch attempts, twelve model
-runs, three development-regression calls, and thirty tool calls in total. Use the
-tool-reported remaining counts. Prefer a few informative experiments and submit
+Budgets: six additional measured experiments, three source-edit attempts shared
+across replace_model_source and patch_model (including rejected requests), twelve
+model runs, three development-regression calls, and thirty tool calls in total.
+Use budget.model_edits for the shared edit count. Prefer replace_model_source with
+the complete Python source and the latest source_sha256 as expected_sha256; no diff
+headers or hunk counts are required. Prefer a few informative experiments and submit
 your best supported candidate before exhausting the budget.

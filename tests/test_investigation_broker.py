@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 
+from component_worker import WheelActuatorWorker
 from investigation.broker import InvestigationBroker, TOOL_SCHEMAS
 from investigation.patching import PatchError, apply_actuator_diff
 
@@ -86,6 +87,13 @@ class BrokerTests(unittest.TestCase):
                                     "hypothesis": "Prior operation may change the response.",
                                     "expected_observation": "The measured stopping distance changes."})
 
+    def replace(self, source, expected_sha256=None):
+        if expected_sha256 is None:
+            expected_sha256 = hashlib.sha256(self.broker.current_source.read_bytes()).hexdigest()
+        return self.broker.dispatch("replace_model_source", {
+            "source": source, "expected_sha256": expected_sha256,
+            "rationale": "Test a source-level component extension."})
+
     def test_initial_evidence_is_cached_and_does_not_spend_extra_budget(self):
         evidence = self.broker.initial_evidence()
         self.assertIs(self.broker.initial_evidence(), evidence)
@@ -145,6 +153,115 @@ class BrokerTests(unittest.TestCase):
         self.assertEqual(self.broker.current_source.stat().st_mode & 0o222, 0)
         self.assertEqual(result["source_sha256"], hashlib.sha256(after.encode()).hexdigest())
 
+    def test_replacement_installs_real_state_update_and_preserves_exact_versions(self):
+        inspected = self.broker.dispatch("inspect_model", {})
+        old_path = self.broker.current_source
+        before = inspected["source"]
+        # No final newline: exact replacement bytes and its generated diff must agree.
+        after = '''def init_state():
+    return {"elapsed_s": 0.0}
+
+def compute_brake_torque_limits(state, brake_command, wheel_speed_rad_s):
+    return [100.0 * brake_command / (1.0 + state["elapsed_s"])] * 4
+
+def advance_state(state, brake_command, mean_wheel_speed_rad_s, applied_brake_torque_nm, dt_s):
+    return {"elapsed_s": state["elapsed_s"] + dt_s}
+
+def on_trial_reset(state):
+    return state'''
+        result = self.replace(after, inspected["source_sha256"])
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["version"], "v001")
+        self.assertEqual(result["source_sha256"], hashlib.sha256(after.encode()).hexdigest())
+        self.assertEqual(old_path.read_text(), before)
+        self.assertEqual(self.broker.current_source.read_bytes(), after.encode())
+        self.assertEqual(self.broker.current_source.stat().st_mode & 0o222, 0)
+        attempt = self.broker.attempts / "attempt_001"
+        self.assertEqual(apply_actuator_diff(before, (attempt / "patch.diff").read_text()), after)
+        self.assertEqual(json.loads((attempt / "request.json").read_text())["source"], after)
+        with WheelActuatorWorker(self.broker.current_source) as worker:
+            self.assertEqual(worker.torque_limits(1.0, [10.0] * 4), [100.0] * 4)
+            worker.advance(1.0, [10.0] * 4, [-100.0] * 4, 0.25)
+            worker.reposition()
+            self.assertEqual(worker.inspect_state(), {"elapsed_s": 0.25})
+            self.assertEqual(worker.torque_limits(1.0, [10.0] * 4), [80.0] * 4)
+        self.assertEqual(self.physics.references, [])
+
+    def test_stale_replacement_cannot_overwrite_new_version_and_is_recorded(self):
+        before = self.broker.current_source.read_text()
+        old_hash = hashlib.sha256(before.encode()).hexdigest()
+        first = self.replace(before.replace("835.0", "800.0"), old_hash)
+        current_path = self.broker.current_source
+        stale = self.replace(before.replace("835.0", "700.0"), old_hash)
+        self.assertFalse(stale["ok"])
+        self.assertIn("source has changed", stale["error"]["message"])
+        self.assertEqual(self.broker.current_source, current_path)
+        self.assertEqual(json.loads((self.broker.attempts / "attempt_002/request.json").read_text())["expected_sha256"], old_hash)
+        current = self.broker.dispatch("inspect_model", {})
+        self.assertEqual(current["source_sha256"], first["source_sha256"])
+        retry = self.replace(current["source"].replace("800.0", "790.0"), current["source_sha256"])
+        self.assertTrue(retry["ok"], retry)
+        self.assertEqual(retry["version"], "v003")
+        self.assertEqual(retry["budget"]["model_edits"]["used"], 3)
+
+    def test_patch_and_replacement_share_attempt_budget_and_unique_history(self):
+        before = self.broker.current_source.read_text()
+        self.assertFalse(self.broker.dispatch("patch_model", {"diff": "bad", "rationale": "Try."})["ok"])
+        replacement = self.replace(before.replace("835.0", "800.0"))
+        self.assertTrue(replacement["ok"], replacement)
+        self.assertEqual(replacement["version"], "v002")
+        source = self.broker.current_source.read_text()
+        patched = self.broker.dispatch("patch_model", {
+            "diff": diff_for(source, source.replace("800.0", "790.0")), "rationale": "Try another capacity."})
+        self.assertTrue(patched["ok"], patched)
+        self.assertEqual(patched["version"], "v003")
+        self.assertFalse(self.replace(source)["ok"])
+        self.assertFalse(self.broker.dispatch("patch_model", {"diff": "bad", "rationale": "Try."})["ok"])
+        budget = self.broker.budget_status()
+        self.assertEqual(budget["model_edits"]["used"], 3)
+        self.assertEqual(budget["patch_model"]["used"], 2)
+        self.assertEqual(budget["replace_model_source"]["used"], 1)
+        self.assertEqual(sorted(path.name for path in self.broker.attempts.iterdir()),
+                         ["attempt_001", "attempt_002", "attempt_003"])
+
+    def test_invalid_replacement_syntax_and_interface_keep_current_source(self):
+        current_path = self.broker.current_source
+        before = current_path.read_text()
+        invalid = [before.replace("def init_state():", "def init_state(:"),
+                   before.replace("def advance_state(", "def missing_function("),
+                   before.replace("return {}", "return {'bad': object()}")]
+        for index, source in enumerate(invalid):
+            result = self.replace(source)
+            self.assertFalse(result["ok"], result)
+            self.assertEqual(self.broker.current_source, current_path)
+            self.assertNotIn(str(self.directory), json.dumps(result))
+            if index == 0:
+                self.assertIn("source_line", result["error"])
+
+    def test_replacement_executes_only_in_worker_and_cannot_read_host_files(self):
+        before = self.broker.current_source.read_text()
+        secret = self.directory / "private_reference.txt"
+        secret.write_text("private sentinel value")
+        hostile = before + f"\nwith open({str(secret)!r}) as stream:\n    assert stream.read()\n"
+        result = self.replace(hostile)
+        self.assertFalse(result["ok"])
+        self.assertEqual(self.broker.current_source.read_text(), before)
+        self.assertNotIn(str(secret), json.dumps(result))
+        self.assertNotIn("private sentinel value", json.dumps(result))
+
+    def test_replacement_rejects_invalid_hash_unchanged_and_oversized_source(self):
+        before = self.broker.current_source.read_text()
+        result = self.replace(before + "\n", "../other.py")
+        self.assertFalse(result["ok"])
+        self.assertIn("64-character", result["error"]["message"])
+        unchanged = self.replace(before)
+        self.assertFalse(unchanged["ok"])
+        self.assertIn("does not change", unchanged["error"]["message"])
+        oversized = self.replace(before + "#" * 65536)
+        self.assertFalse(oversized["ok"])
+        self.assertIn("size limit", oversized["error"]["message"])
+        self.assertEqual(self.broker.current_source.read_text(), before)
+
     def test_syntax_and_execution_failures_keep_prior_version_and_hide_host_paths(self):
         old_path = self.broker.current_source
         before = old_path.read_text()
@@ -199,6 +316,7 @@ class BrokerTests(unittest.TestCase):
         self.assertFalse(self.experiment()["ok"])
         self.assertFalse(self.broker.dispatch("run_model", {"config": {}, "rationale": "More."})["ok"])
         self.assertFalse(self.broker.dispatch("patch_model", {"diff": "bad", "rationale": "More."})["ok"])
+        self.assertFalse(self.replace(self.broker.current_source.read_text() + "\n")["ok"])
         self.assertEqual(self.physics.references, [])
         self.assertEqual(self.broker.freeze()["status"], "agent_submitted")
 
@@ -214,7 +332,7 @@ class BrokerTests(unittest.TestCase):
         self.assertFalse(self.broker.dispatch("inspect_model", {})["ok"])
         self.assertEqual(self.broker.budget_status()["tool_calls"]["used"], 30)
         self.assertEqual({tool["name"] for tool in TOOL_SCHEMAS}, {
-            "inspect_model", "patch_model", "run_experiment", "observe_run", "run_model", "run_regression_suite", "submit_prediction"})
+            "inspect_model", "replace_model_source", "patch_model", "run_experiment", "observe_run", "run_model", "run_regression_suite", "submit_prediction"})
         for schema in TOOL_SCHEMAS:
             self.assertTrue(schema["strict"])
             self.assertFalse(schema["parameters"]["additionalProperties"])

@@ -1,5 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { numeric } from '../api.js';
+import { trialRows } from '../replay.js';
+export { trialRows } from '../replay.js';
 
 export const TRACKS = [
   { id: 'candidate', label: 'Candidate', color: '#0864ee' },
@@ -7,16 +9,7 @@ export const TRACKS = [
   { id: 'original', label: 'Original', color: '#bf9460' },
 ];
 
-export function trialRows(trace) {
-  const rows = trace?.observations ?? [];
-  return rows.filter(row => row.phase === 'trial' && numeric(row.phase_time)).map(row => ({
-    t: row.phase_time,
-    speed: Array.isArray(row.velocity) ? Math.hypot(...row.velocity) : row.speed_mps,
-    x: row.front_x,
-  })).filter(row => numeric(row.speed));
-}
-
-export default function SpeedChart({ traces, time = 0, onSeek, large = false, quantity = 'speed' }) {
+export default function SpeedChart({ traces, time = 0, onSeek, large = false, quantity = 'speed', selectedTrack }) {
   const containerRef = useRef(null);
   const [size, setSize] = useState({ width: 900, height: large ? 290 : 192 });
   useLayoutEffect(() => {
@@ -31,7 +24,9 @@ export default function SpeedChart({ traces, time = 0, onSeek, large = false, qu
     observer.observe(container);
     return () => observer.disconnect();
   }, []);
-  const series = useMemo(() => TRACKS.map(track => ({ ...track, rows: trialRows(traces[track.id]) })), [traces]);
+  const series = useMemo(() => TRACKS.map(track => ({ ...track, rows: trialRows(traces[track.id])
+    .filter(row => numeric(quantity === 'position' ? row.x : row.speed)) }))
+    .sort((a, b) => Number(a.id === selectedTrack) - Number(b.id === selectedTrack)), [traces, quantity, selectedTrack]);
   const points = series.flatMap(track => track.rows);
   const containerClass = `speed-chart-container ${large ? 'speed-chart-container-large' : ''}`;
   if (!points.length) return <div ref={containerRef} className={containerClass}><div className="chart-empty">Recorded telemetry will appear when a trial is available.</div></div>;
@@ -56,13 +51,13 @@ export default function SpeedChart({ traces, time = 0, onSeek, large = false, qu
   }}>
     {xTicks.map(tick => <g key={tick}><line x1={x(tick)} y1={margin.top} x2={x(tick)} y2={height - margin.bottom} className="chart-grid" /><text x={x(tick)} y={height - margin.bottom + 19} textAnchor="middle">{tick.toFixed(tick < 10 ? 1 : 0)}</text></g>)}
     {yTicks.map(tick => <g key={tick}><line x1={margin.left} y1={y(tick)} x2={width - margin.right} y2={y(tick)} className="chart-grid" /><text x={margin.left - 10} y={y(tick) + 4} textAnchor="end">{tick.toFixed(0)}</text></g>)}
-    {series.filter(track => track.rows.length).map(track => <path key={track.id} d={track.rows.filter(point => numeric(value(point))).map((point, index) => `${index ? 'L' : 'M'}${x(point.t).toFixed(2)},${y(value(point)).toFixed(2)}`).join(' ')} stroke={track.color} strokeWidth={track.id === 'candidate' ? 2.6 : 1.8} fill="none" strokeDasharray={track.id === 'original' ? '5 4' : undefined} />)}
+    {series.filter(track => track.rows.length).map(track => <path key={track.id} data-track={track.id} data-selected={track.id === selectedTrack} d={track.rows.map((point, index) => `${index ? 'L' : 'M'}${x(point.t).toFixed(2)},${y(value(point)).toFixed(2)}`).join(' ')} stroke={track.color} strokeWidth={track.id === selectedTrack ? 3 : 1.8} opacity={!selectedTrack || track.id === selectedTrack ? 1 : 0.45} fill="none" strokeDasharray={selectedTrack && track.id !== selectedTrack ? '5 4' : undefined} />)}
     <line x1={x(Math.min(time, maxTime))} x2={x(Math.min(time, maxTime))} y1={margin.top} y2={height - margin.bottom} stroke="#111827" strokeWidth="1" strokeDasharray="3 4" opacity=".5" />
     <text x={width / 2} y={height - 4} textAnchor="middle">Time (s)</text>
     <text transform={`translate(13 ${margin.top + chartHeight / 2}) rotate(-90)`} textAnchor="middle">{quantity === 'position' ? 'Front position (m)' : 'Speed (m/s)'}</text>
   </svg></div>;
 }
 
-export function ChartLegend({ traces }) {
-  return <div className="chart-legend">{TRACKS.filter(track => trialRows(traces[track.id]).length).map(track => <span key={track.id}><i style={{ background: track.color }} />{track.label}</span>)}</div>;
+export function ChartLegend({ traces, selectedTrack }) {
+  return <div className="chart-legend">{TRACKS.filter(track => trialRows(traces[track.id]).length).map(track => <span key={track.id} className={track.id === selectedTrack ? 'is-selected' : ''}><i style={{ background: track.color }} />{track.label}</span>)}</div>;
 }

@@ -26,6 +26,7 @@ function InvestigationApp() {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState('');
   const [tab, setTab] = useState('activity');
+  const [view, setView] = useState('scenario');
   const run = detail.run;
   const activeId = listing.active_run_id || listing.runs.find(item => item.active)?.id;
 
@@ -46,7 +47,7 @@ function InvestigationApp() {
   }, [selectedId]);
 
   useEffect(() => {
-    const cases = run?.evaluation?.cases ?? [];
+    const cases = (run?.evaluation?.cases ?? []).filter(item => typeof item.case_id === 'string');
     if (cases.length && !cases.some(item => item.case_id === selectedCase)) {
       setSelectedCase(cases.find(item => item.config?.preparation_cycles > 0 && !item.config?.wait_s)?.case_id || cases[0].case_id);
     }
@@ -57,7 +58,7 @@ function InvestigationApp() {
     setStarting(true); setStartError('');
     try {
       const result = await request('/api/runs', { method: 'POST', body: JSON.stringify({ profile }) });
-      setSelectedId(result.id); setTab('activity');
+      setSelectedId(result.id); setTab('activity'); setView('investigation');
       await listing.refresh();
     } catch (failure) {
       setStartError(failure.message);
@@ -67,8 +68,7 @@ function InvestigationApp() {
   }
 
   function showPrompts() {
-    setTab('prompts');
-    document.getElementById('investigator-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTab('prompts'); setView('investigation');
   }
 
   const latest = run?.status === 'completed'
@@ -86,16 +86,20 @@ function InvestigationApp() {
         {selectedId && !listing.runs.some(item => item.id === selectedId) && <option value={selectedId}>{selectedId}</option>}
         {listing.runs.map(item => <option key={item.id} value={item.id}>{runLabel(item)}{item.active ? ' · running' : ''}</option>)}
       </select>
-      <div className="start-controls"><select aria-label="New investigation profile" value={profile} onChange={event => setProfile(event.target.value)} disabled={starting}><option value="astra-medium">Astra / medium</option><option value="sol-high">Sol / high</option></select><button className="primary start-button" type="button" disabled={starting || listing.loading || Boolean(activeId) || Boolean(listing.error)} onClick={startRun} title={activeId ? 'An investigation is already active' : 'Start a bounded investigation using the configured local API key'}>{starting ? 'Starting…' : activeId ? 'Run active' : 'Start run'}</button></div>
+      <div className="start-controls"><select aria-label="New investigation profile" value={profile} onChange={event => setProfile(event.target.value)} disabled={starting}><option value="astra-xhigh">Astra / extra high</option><option value="sol-high">Sol / high</option></select><button className="primary start-button" type="button" disabled={starting || listing.loading || Boolean(activeId) || Boolean(listing.error)} onClick={startRun} title={activeId ? 'An investigation is already active' : 'Start a bounded investigation using the configured local API key'}>{starting ? 'Starting…' : activeId ? 'Run active' : 'Start run'}</button></div>
     </header>
     {error && <div className="error-banner" role="alert"><span>{error}</span><button type="button" className="text-button" onClick={() => { setStartError(''); listing.refresh(); }}>Retry connection</button></div>}
     {(latest || requests !== undefined || detail.loading) && <div className="run-status" role="status"><span>{detail.loading && !run ? 'Loading experiment…' : latest || `Recorded run · ${run?.status || 'status unavailable'}`}</span><span>{requests !== undefined ? `${requests} API requests` : ''}{run?.tool_calls !== undefined ? ` · ${run.tool_calls} tool calls` : ''}{elapsedLabel(run?.metadata) ? ` · ${elapsedLabel(run.metadata)}` : ''}</span></div>}
     <main>
-      <div className="workspace">
-        <Replay run={run} selectedCase={selectedCase} onSelectCase={setSelectedCase} />
-        <Investigator run={run} tab={tab} setTab={setTab} />
+      <nav className="workspace-nav" aria-label="Dashboard views">
+        {[['scenario', 'Scenario'], ['investigation', 'Investigation'], ['comparison', 'Compare runs']].map(([id, label]) =>
+          <button key={id} type="button" aria-pressed={view === id} className={view === id ? 'selected' : ''} onClick={() => setView(id)}>{label}</button>)}
+      </nav>
+      <div className="workspace" aria-busy={detail.loading}>
+        {view === 'scenario' && <Replay run={run} selectedCase={selectedCase} onSelectCase={setSelectedCase} />}
+        {view === 'investigation' && <Investigator key={run?.id || selectedId} run={run} tab={tab} setTab={setTab} />}
+        {view === 'comparison' && <Comparison runs={mergedRuns} selectedId={selectedId} onSelect={id => { setSelectedId(id); setView('scenario'); }} showPrompts={showPrompts} />}
       </div>
-      <Comparison runs={mergedRuns} selectedId={selectedId} onSelect={setSelectedId} showPrompts={showPrompts} />
     </main>
   </>;
 }

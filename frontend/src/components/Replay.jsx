@@ -1,74 +1,93 @@
 import { useEffect, useMemo, useState } from 'react';
 import { caseName, getSummary, meters, numeric, request, runPath } from '../api.js';
+import { frameAt, replayFrames, validManifest, validTrace } from '../replay.js';
 import { PlayIcon } from './Icons.jsx';
 import SpeedChart, { ChartLegend, TRACKS, trialRows } from './SpeedChart.jsx';
 
-function frameAt(frames, time) {
-  let left = 0, right = frames.length - 1;
-  while (left <= right) {
-    const middle = Math.floor((left + right) / 2);
-    if (frames[middle].t_s <= time) left = middle + 1;
-    else right = middle - 1;
-  }
-  return frames[Math.max(0, right)];
+export default function Replay(props) {
+  const [track, setTrack] = useState('reference');
+  // Discard the previous scenario's traces and playback before painting a new selection.
+  return <ScenarioReplay key={JSON.stringify([props.run?.id, props.selectedCase])} {...props} track={track} setTrack={setTrack} />;
 }
 
-export default function Replay({ run, selectedCase, onSelectCase }) {
-  const cases = run?.evaluation?.cases ?? [];
+function ScenarioReplay({ run, selectedCase, onSelectCase, track, setTrack }) {
+  const recordedCases = run?.evaluation?.cases ?? [];
+  const cases = recordedCases.filter(item => typeof item.case_id === 'string' && numeric(item.config?.speed_mps));
+  const unsupportedReplay = run?.metadata?.kind === 'platform_investigation'
+    || run?.evaluation?.kind === 'platform_repair_verification' || recordedCases.length > 0 && !cases.length;
   const caseData = cases.find(item => item.case_id === selectedCase);
-  const [track, setTrack] = useState('reference');
   const [traces, setTraces] = useState({});
   const [traceLoading, setTraceLoading] = useState(false);
   const [traceError, setTraceError] = useState('');
-  const [manifest, setManifest] = useState(null);
-  const [imageError, setImageError] = useState(false);
+  const [media, setMedia] = useState(null);
+  const [imageError, setImageError] = useState('');
+  const [mediaError, setMediaError] = useState('');
   const [mediaLoading, setMediaLoading] = useState(false);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const [quantity, setQuantity] = useState('position');
   const mediaItem = run?.media?.find(item => item.case_id === selectedCase && item.track === track);
   const manifestUrl = mediaItem?.manifest_url;
+  const caseSignature = JSON.stringify(caseData ?? null);
+  const manifest = media?.url === manifestUrl && media?.caseSignature === caseSignature ? media.value : null;
 
   useEffect(() => {
-    setTime(0); setPlaying(false); setTraces({}); setTraceError('');
-    if (!run?.id || !selectedCase) return;
+    setTraces({}); setTraceError(''); setTraceLoading(false);
+    if (!run?.id || !caseData) return;
+    const selected = JSON.parse(caseSignature);
     let cancelled = false;
+    let timer;
     const controller = new AbortController();
     setTraceLoading(true);
-    Promise.allSettled(TRACKS.map(async item => [item.id, await request(
-      `${runPath(run.id)}/trace?case=${encodeURIComponent(selectedCase)}&track=${item.id}`,
-      { signal: controller.signal },
-    )])).then(results => {
+    async function refresh() {
+      const expectedTracks = TRACKS.filter(item => selected[item.id]);
+      const results = await Promise.allSettled(expectedTracks.map(async item => {
+        const value = await request(`${runPath(run.id)}/trace?case=${encodeURIComponent(selectedCase)}&track=${item.id}`,
+          { signal: controller.signal });
+        if (!validTrace(value, selected, item.id)) throw new Error('Trace does not match this scenario.');
+        return [item.id, value];
+      }));
       if (cancelled) return;
       const fulfilled = results.filter(item => item.status === 'fulfilled').map(item => item.value);
       setTraces(Object.fromEntries(fulfilled));
-      if (fulfilled.length === 0) setTraceError('Recorded trajectories are not available for this case yet.');
-      else if (fulfilled.length < 3) setTraceError('Some model traces are unavailable; the chart shows the records that exist.');
+      setTraceError(fulfilled.length === 0 ? 'Verified trajectories are not available for this scenario yet.'
+        : fulfilled.length < TRACKS.length ? 'Some model traces are unavailable; showing verified records only.' : '');
       setTraceLoading(false);
-    });
-    return () => { cancelled = true; controller.abort(); };
-  }, [run?.id, selectedCase]);
+      // Artifacts can arrive after the run details, or be briefly unreadable while written.
+      if (fulfilled.length < expectedTracks.length) timer = setTimeout(refresh, 3000);
+    }
+    refresh();
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer); };
+  }, [run?.id, selectedCase, caseSignature]);
 
   useEffect(() => {
-    setManifest(null); setImageError(false); setMediaLoading(false);
-    if (!manifestUrl) return;
+    setMedia(null); setImageError(''); setMediaError(''); setMediaLoading(false);
+    if (!manifestUrl || !caseData) return;
+    const selected = JSON.parse(caseSignature);
     let cancelled = false;
     const controller = new AbortController();
     setMediaLoading(true);
     request(manifestUrl, { signal: controller.signal }).then(value => {
-      if (!cancelled) setManifest(value);
-    }).catch(() => {}).finally(() => { if (!cancelled) setMediaLoading(false); });
+      if (!validManifest(value, selected, track) || !replayFrames(value).length) {
+        throw new Error('Replay frames could not be verified for this scenario and model.');
+      }
+      if (!cancelled) setMedia({ url: manifestUrl, caseSignature, value });
+    }).catch(failure => { if (!cancelled) setMediaError(failure.message); })
+      .finally(() => { if (!cancelled) setMediaLoading(false); });
     return () => { cancelled = true; controller.abort(); };
-  }, [manifestUrl]);
+  }, [manifestUrl, caseSignature, track]);
 
-  const frames = useMemo(() => (manifest?.frames ?? []).filter(frame => numeric(frame.t_s)), [manifest]);
+  const frames = useMemo(() => replayFrames(manifest), [manifest]);
   const duration = useMemo(() => Math.max(0, manifest?.duration_s || 0,
-    ...Object.values(traces).flatMap(value => trialRows(value).map(row => row.t))), [traces, manifest]);
+    ...trialRows(traces[track]).map(row => row.t)), [traces, manifest, track]);
   const frame = frames.length ? frameAt(frames, time) : null;
   const frameSrc = frame && manifestUrl ? new URL(frame.url || frame.file, new URL(manifestUrl, window.location.origin)).href : '';
-  const hasFrames = Boolean(frameSrc && !imageError);
+  const hasFrames = Boolean(frameSrc && imageError !== manifestUrl);
   const summary = getSummary(caseData?.[track]);
   const config = caseData?.config ?? {};
+  const trackLabel = TRACKS.find(item => item.id === track)?.label;
+  const hasTraces = Object.values(traces).some(value => trialRows(value).length);
 
   useEffect(() => {
     if (!playing || duration <= 0) return;
@@ -90,13 +109,13 @@ export default function Replay({ run, selectedCase, onSelectCase }) {
 
   const seek = next => { setTime(Math.max(0, Math.min(duration, next))); setPlaying(false); };
   return <section className="replay-panel" aria-labelledby="replay-title">
-    <h1 id="replay-title">Car replay</h1>
+    <h1 id="replay-title">Scenario replay</h1>
     <div className="replay-selectors">
-      <label>Case<select value={selectedCase || ''} onChange={event => onSelectCase(event.target.value)} disabled={!cases.length}>
+      <label>Scenario<select value={selectedCase || ''} onChange={event => onSelectCase(event.target.value)} disabled={!cases.length}>
         {!cases.length && <option value="">No recorded cases yet</option>}
         {cases.map((item, index) => <option key={item.case_id} value={item.case_id}>{caseName(item, index)}</option>)}
       </select></label>
-      <label>Track<select value={track} onChange={event => setTrack(event.target.value)} disabled={!caseData}>
+      <label>Replay model<select value={track} onChange={event => { setTrack(event.target.value); setTime(0); setPlaying(false); }} disabled={!caseData}>
         <option value="reference">Reference</option><option value="candidate">Candidate</option><option value="original">Original model</option>
       </select></label>
     </div>
@@ -107,13 +126,17 @@ export default function Replay({ run, selectedCase, onSelectCase }) {
       {numeric(config.wait_s) && <span>{config.wait_s} s rest</span>}
       {'wall_distance_m' in config && <span>{config.wall_distance_m === null ? 'No wall' : `${config.wall_distance_m} m wall gap`}</span>}
     </div>}
+    {!hasFrames && hasTraces && <div className="telemetry-controls">
+      <div className="quantity-toggle" aria-label="Telemetry measurement">{['position', 'speed'].map(value => <button type="button" key={value} className={quantity === value ? 'is-selected' : ''} aria-pressed={quantity === value} onClick={() => setQuantity(value)}>{value === 'position' ? 'Position' : 'Speed'}</button>)}</div>
+      <ChartLegend traces={traces} selectedTrack={track} />
+    </div>}
     <div className={`replay-media ${hasFrames ? '' : 'replay-media-telemetry'}`}>
-      {hasFrames ? <img src={frameSrc} alt={`${track} MuJoCo replay for ${caseName(caseData)} at ${time.toFixed(1)} seconds`} onError={() => setImageError(true)} />
-        : caseData && Object.keys(traces).length ? <SpeedChart traces={traces} time={time} onSeek={seek} large quantity="position" />
-          : <div className="empty-message"><strong>{traceLoading || mediaLoading ? 'Loading recorded motion…' : run?.active ? 'The investigation is running' : 'No replay available yet'}</strong><p>{run?.active ? 'Follow the investigator as it tests and edits the component. Reserved replays appear after predictions are frozen and evaluated.' : 'Select a completed run or start an investigation to inspect recorded car motion.'}</p></div>}
+      {hasFrames ? <img key={manifestUrl} src={frameSrc} alt={`${trackLabel} MuJoCo replay for ${caseName(caseData)} at ${frame.t_s.toFixed(2)} seconds`} onError={() => setImageError(manifestUrl)} />
+        : caseData && hasTraces ? <SpeedChart traces={traces} time={time} onSeek={seek} large quantity={quantity} selectedTrack={track} />
+          : <div className="empty-message"><strong>{unsupportedReplay ? 'Replay is not available for this experiment type' : traceLoading || mediaLoading ? 'Loading recorded motion…' : run?.active ? 'The investigation is running' : 'No replay available yet'}</strong><p>{unsupportedReplay ? 'This viewer supports recorded car braking scenarios. Open Investigation to inspect this run’s evidence.' : run?.active ? 'Follow the investigator as it tests and edits the component. Reserved replays appear after predictions are frozen and evaluated.' : 'Select a completed run or start an investigation to inspect recorded car motion.'}</p></div>}
     </div>
     <div className="media-caption">
-      <span>{hasFrames ? 'Recorded MuJoCo replay' : traceLoading ? 'Loading telemetry…' : Object.keys(traces).length ? mediaLoading ? 'Loading replay frames; showing recorded telemetry' : 'Recorded telemetry · replay frames unavailable' : 'Synthetic experiment'}</span>
+      <span>{hasFrames ? `${trackLabel} · verified MuJoCo rerender` : traceLoading ? 'Loading telemetry…' : hasTraces ? mediaLoading ? 'Loading replay frames; showing recorded telemetry' : `${trackLabel} · recorded telemetry` : 'Synthetic experiment'}</span>
       {caseData && <span>{summary.censored ? 'Stopping distance censored' : numeric(summary.stopping_distance) ? `Stop: ${meters(summary.stopping_distance)}` : 'Stop not recorded'}</span>}
     </div>
     <div className="playback-controls">
@@ -126,8 +149,12 @@ export default function Replay({ run, selectedCase, onSelectCase }) {
       <label className="speed-control">Speed<select aria-label="Replay speed" value={speed} onChange={event => setSpeed(Number(event.target.value))}><option value="0.5">0.5x</option><option value="1">1x</option><option value="2">2x</option></select></label>
     </div>
     {traceError && <p className="inline-note" role="status">{traceError}</p>}
-    <div className="chart-heading"><h2>Speed over time</h2><ChartLegend traces={traces} /></div>
-    <SpeedChart traces={traces} time={time} onSeek={seek} />
+    {(mediaError || imageError === manifestUrl && manifestUrl) && <p className="inline-note" role="status">Replay frames unavailable; showing recorded telemetry.</p>}
+    {hasTraces && !traces[track] && <p className="inline-note" role="status">{trackLabel} telemetry is unavailable. Other models are shown for comparison.</p>}
+    {hasFrames && <details className="telemetry-details"><summary>Speed over time</summary>
+      <ChartLegend traces={traces} selectedTrack={track} />
+      <SpeedChart traces={traces} time={time} onSeek={seek} selectedTrack={track} />
+    </details>}
     {caseData && <div className="case-metrics" aria-label="Selected case stopping predictions">
       {TRACKS.map(item => <span key={item.id}><i style={{ background: item.color }} />{item.label}: <strong>{getSummary(caseData[item.id]).censored ? 'censored' : meters(getSummary(caseData[item.id]).stopping_distance)}</strong></span>)}
       {numeric(caseData.candidate_error_m) && <span>Candidate error: <strong>{meters(caseData.candidate_error_m)}</strong></span>}

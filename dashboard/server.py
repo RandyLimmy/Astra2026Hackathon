@@ -15,7 +15,7 @@ from uuid import uuid4
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PROFILES = {"astra-medium": ("gpt-6-astra", "medium"), "sol-high": ("gpt-5.6-sol", "high")}
+PROFILES = {"astra-xhigh": ("gpt-6-astra", "xhigh"), "sol-high": ("gpt-5.6-sol", "high")}
 TRACKS = {"reference", "candidate", "original"}
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}\Z")
 TERMINAL = {"completed", "submitted", "error", "api_error", "evaluation_error", "interrupted", "failed"}
@@ -301,7 +301,7 @@ class Dashboard:
     def start_run(self, body):
         if (not isinstance(body, dict) or set(body) != {"profile"} or
                 not isinstance(body["profile"], str) or body["profile"] not in PROFILES):
-            raise RequestError(400, "Choose profile astra-medium or sol-high.")
+            raise RequestError(400, "Choose profile astra-xhigh or sol-high.")
         with self.lock:
             if self.list_runs()["active_run_id"]:
                 raise RequestError(409, "An investigation is already active.")

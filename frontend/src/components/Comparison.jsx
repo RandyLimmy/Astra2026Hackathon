@@ -35,6 +35,6 @@ export default function Comparison({ runs, selectedId, onSelect, showPrompts }) 
       {other.length > 0 && <div className="comparison-group">{groups.size > 0 && <h3>Earlier runs · separate from the matched comparison</h3>}<CompareTable runs={other} selectedId={selectedId} onSelect={onSelect} /></div>}
       <p className="comparison-note">Synthetic experiments. Lower mean error does not mean every prediction passed. Select a model row to inspect that run.</p>
     </>}
-    <div className="footer-rule"><button className="text-button" type="button" onClick={showPrompts}>View exact prompts and source</button><span>RealityPatch · local experiment viewer</span></div>
+    <div className="footer-rule"><button className="text-button" type="button" onClick={showPrompts}>View exact prompts</button><span>RealityPatch · local experiment viewer</span></div>
   </section>;
 }

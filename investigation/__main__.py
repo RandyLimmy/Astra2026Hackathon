@@ -1,4 +1,4 @@
-"""Run a pinned Astra/medium or Sol/high investigation using one local API key."""
+"""Run a pinned Astra/extra high or Sol/high investigation using one local API key."""
 
 import argparse
 from datetime import datetime, timezone

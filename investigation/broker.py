@@ -1,9 +1,10 @@
-"""Seven neutral investigation tools over host-owned physics and source versions."""
+"""Neutral investigation tools over host-owned physics and source versions."""
 
 from __future__ import annotations
 
 import ast
 from datetime import datetime, timezone
+import difflib
 import hashlib
 import json
 from pathlib import Path
@@ -12,7 +13,7 @@ from uuid import uuid4
 
 from component_worker import WheelActuatorWorker, WorkerError
 
-from .patching import PatchError, apply_actuator_diff
+from .patching import MAX_SOURCE_BYTES, PatchError, apply_actuator_diff
 
 
 DEFAULTS = {"speed_mps": 25.0, "brake_strength": 1.0, "preparation_cycles": 0,
@@ -38,7 +39,9 @@ def _schema(name, description, properties):
 TEXT = {"type": "string"}
 TOOL_SCHEMAS = [
     _schema("inspect_model", "Read the current editable source, its hash and freshly initialized own state.", {}),
-    _schema("patch_model", "Apply a unified diff to actuator.py only; at most three attempts, including rejected patches.",
+    _schema("replace_model_source", "Replace all of actuator.py using the current source_sha256 from inspect_model as expected_sha256. Preferred for source edits; shares three total attempts with patch_model, including rejections. Keep the required interface.",
+            {"source": TEXT, "expected_sha256": TEXT, "rationale": TEXT}),
+    _schema("patch_model", "Apply a unified diff to actuator.py only. Shares three total edit attempts with replace_model_source, including rejections; full-source replacement avoids diff hunk counts.",
             {"diff": TEXT, "rationale": TEXT}),
     _schema("run_experiment", "Test a fresh specimen after recording a hypothesis and expected observation; six additional attempts maximum.",
             {"config": CONFIG_SCHEMA, "hypothesis": TEXT, "expected_observation": TEXT}),
@@ -51,7 +54,10 @@ TOOL_SCHEMAS = [
             {"rationale": TEXT}),
 ]
 ARGUMENTS = {entry["name"]: set(entry["parameters"]["required"]) for entry in TOOL_SCHEMAS}
-LIMITS = {"run_experiment": 6, "patch_model": 3, "run_model": 12, "run_regression_suite": 3}
+MODEL_EDIT_LIMIT = 3
+EDIT_TOOLS = frozenset({"patch_model", "replace_model_source"})
+LIMITS = {"run_experiment": 6, "patch_model": MODEL_EDIT_LIMIT,
+          "replace_model_source": MODEL_EDIT_LIMIT, "run_model": 12, "run_regression_suite": 3}
 SUMMARY_FIELDS = {"collision", "impact_speed", "collision_time", "stopped", "censored", "brake_start_x",
                   "brake_start_time", "stopping_distance", "final_front_x", "final_speed", "wall_clearance",
                   "max_yaw_degrees", "max_lateral_displacement", "lane_departure", "trial_duration"}
@@ -143,8 +149,13 @@ class InvestigationBroker:
     def budget_status(self):
         return {"tool_calls": {"used": self._dispatches, "limit": 30},
                 **{name: {"used": count, "limit": LIMITS[name]} for name, count in self._counts.items()},
+                "model_edits": {"used": self._edit_count(), "limit": MODEL_EDIT_LIMIT,
+                                "tools": sorted(EDIT_TOOLS)},
                 "elapsed_s": round(time.monotonic() - self._started, 2), "time_limit_s": 1800,
                 "frozen": self.frozen_source is not None}
+
+    def _edit_count(self):
+        return sum(self._counts[name] for name in EDIT_TOOLS)
 
     def _config(self, config):
         if not isinstance(config, dict) or set(config) - set(DEFAULTS):
@@ -244,6 +255,8 @@ class InvestigationBroker:
             if self.frozen_source is not None and name in {*LIMITS, "submit_prediction"}:
                 raise BrokerError("The source is frozen; further edits and executions are closed.")
             if name in LIMITS:
+                if name in EDIT_TOOLS and self._edit_count() >= MODEL_EDIT_LIMIT:
+                    raise BrokerError("The shared source-edit attempt budget is exhausted.")
                 if self._counts[name] >= LIMITS[name]:
                     raise BrokerError("This tool's attempt budget is exhausted.")
                 self._counts[name] += 1
@@ -276,16 +289,56 @@ class InvestigationBroker:
 
     def _patch_model(self, diff, rationale):
         self._text(rationale)
-        attempt = self._counts["patch_model"]
-        updated = apply_actuator_diff(self._source_bytes().decode("utf-8"), diff)
+        before = self._source_bytes().decode("utf-8")
+        directory = self._edit_attempt("patch_model", rationale, {"diff": diff})
+        updated = apply_actuator_diff(before, diff)
+        return self._validate_edit(updated, before, directory, "patch_model", difference=diff)
+
+    def _replace_model_source(self, source, expected_sha256, rationale):
+        self._text(rationale)
+        before = self._source_bytes()
+        directory = self._edit_attempt("replace_model_source", rationale,
+                                       {"source": source, "expected_sha256": expected_sha256})
+        if (not isinstance(expected_sha256, str) or len(expected_sha256) != 64
+                or any(char not in "0123456789abcdef" for char in expected_sha256)):
+            raise BrokerError("expected_sha256 must be the current 64-character source_sha256 from inspect_model.")
+        if expected_sha256 != _hash(before):
+            raise BrokerError("The source has changed; call inspect_model and retry with its source_sha256.")
+        if (not isinstance(source, str) or not source.strip()
+                or len(source.encode("utf-8")) > MAX_SOURCE_BYTES):
+            raise BrokerError("Replacement source must be nonempty UTF-8 text of at most 65536 bytes.")
+        if "\r" in source or "\x00" in source:
+            raise BrokerError("Replacement source must use ordinary UTF-8 text with Unix newlines.")
+        if source.encode("utf-8") == before:
+            raise BrokerError("Replacement does not change the actuator source.")
+        return self._validate_edit(source, before.decode("utf-8"), directory, "replace_model_source")
+
+    def _edit_attempt(self, tool, rationale, request):
+        attempt = self._edit_count()
         directory = self.attempts / f"attempt_{attempt:03d}"
         directory.mkdir(exist_ok=False)
-        (directory / "patch.diff").write_text(diff)
         _write(directory / "rationale.json", {"rationale": rationale})
+        _write(directory / "request.json", {"tool": tool, **request})
+        return directory
+
+    def _validate_edit(self, updated, before, directory, tool, *, difference=None):
+        # Both edit paths use the same source/interface limits and OS-isolated
+        # execution. Candidate code is parsed here, never imported or executed.
+        attempt = self._edit_count()
+        if difference is None:
+            difference = "".join(
+                line if line.endswith("\n") else line + "\n\\ No newline at end of file\n"
+                for line in difflib.unified_diff(
+                    before.splitlines(keepends=True), updated.splitlines(keepends=True),
+                    fromfile="a/actuator.py", tofile="b/actuator.py"))
+        (directory / "patch.diff").write_text(difference, encoding="utf-8")
+        path = directory / "actuator.py"
+        path.write_bytes(updated.encode("utf-8"))
+        path.chmod(0o444)
         try:
             tree = ast.parse(updated, filename="actuator.py")
             if sum(1 for _ in ast.walk(tree)) > 20_000:
-                raise BrokerError("Patched source exceeds its structural complexity limit.")
+                raise BrokerError("Edited source exceeds its structural complexity limit.")
             compile(tree, "actuator.py", "exec")
         except SyntaxError as error:
             line = error.lineno
@@ -295,10 +348,7 @@ class InvestigationBroker:
         required = {"init_state", "compute_brake_torque_limits", "advance_state", "on_trial_reset"}
         declared = [node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
         if any(declared.count(name) != 1 for name in required):
-            raise BrokerError("The patched source must define each required component function once.")
-        path = directory / "actuator.py"
-        path.write_text(updated)
-        path.chmod(0o444)
+            raise BrokerError("The edited source must define each required component function once.")
         with WheelActuatorWorker(path) as worker:
             torque = worker.torque_limits(0.5, [10.0] * 4)
             worker.advance(0.5, [10.0] * 4, [-value for value in torque], 0.002)
@@ -306,7 +356,7 @@ class InvestigationBroker:
             worker.inspect_state()
             fingerprint = worker.source_sha256
         self._current_source = self._version(f"v{attempt:03d}", updated.encode())
-        self._log("patch_validated", {"attempt": attempt, "source_sha256": fingerprint})
+        self._log("patch_validated", {"attempt": attempt, "tool": tool, "source_sha256": fingerprint})
         return {"source_sha256": fingerprint, "version": f"v{attempt:03d}",
                 "validation": "Syntax, required functions and isolated interface smoke check passed; predictive quality is not yet established."}
 
