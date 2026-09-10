@@ -49,7 +49,8 @@ def capture(sim, fps: int = 15) -> dict:
                          "qpos": sim.data.qpos.tolist(), "qvel": sim.data.qvel.tolist(),
                          "eq_active": sim.data.eq_active.tolist(),
                          "joint_range": sim.model.jnt_range.tolist()})
-            for key in ("cargo_position", "cargo_ground_contact", "cargo_dropped", "cargo_on_deck"):
+            for key in ("cargo_position", "cargo_ground_contact", "cargo_dropped", "cargo_on_deck",
+                        "cargo_linear_velocity", "cargo_angular_velocity", "cargo_tilt_rad"):
                 if key in diagnostics:
                     rows[-1][key] = diagnostics[key]
             tick = math.floor((sim.elapsed + 1e-9) * fps) + 1
@@ -102,12 +103,26 @@ def comparison(nominal: dict, actual: dict, *, feedback=False) -> dict:
 def stage(row: dict, release: float | None, duration: float, *, curve=False) -> tuple[str, str]:
     when = row["observation"]["time"]
     if when >= duration - 1e-8:
-        return "04 / RESULT", "Cargo retention and trajectory are measured separately" if curve else "Measure the prediction error"
+        if curve:
+            if row.get("cargo_dropped"):
+                return "04 / DELIVERY FAILED", "The parcel remains on the floor; the trolley finished without its load"
+            if row["observation"].get("route_progress", 0) >= warehouse.ROUTE_LENGTH - .05:
+                return "04 / DELIVERY COMPLETE", "The parcel stayed on the deck through the entire route"
+            return "04 / ATTEMPT ENDED", "The delivery route is not complete"
+        return "04 / RESULT", "Measure the prediction error"
     if curve:
         if row.get("cargo_dropped"):
+            if ("cargo_linear_velocity" in row
+                    and np.linalg.norm(row["cargo_linear_velocity"]) < .05
+                    and np.linalg.norm(row["cargo_angular_velocity"]) < .15):
+                return "03 / PARCEL SETTLED", "The parcel rests on the floor as the trolley continues"
             return "03 / CARGO LOST", "The load leaves the deck and hits the ground"
         if not row["cargo_latched"]:
-            return "02 / LOAD BREAKS LOOSE", "Turning overloads the restraint; the load slides off the deck"
+            if row.get("cargo_on_deck") is False:
+                return "02 / PARCEL FALLING", "The parcel clears the deck and falls under gravity"
+            if row.get("cargo_tilt_rad", 0.) > math.radians(12):
+                return "02 / PARCEL TIPPING", "The parcel tips naturally over the deck edge"
+            return "02 / PARCEL SLIDING", "The released parcel slides outward through the bend"
         if "bend" in row["observation"]["phase"] or "turn" in row["observation"]["phase"]:
             return "02 / SHARP BEND", "The trolley follows the marked right turn"
         if any(word in row["observation"]["phase"] for word in ("exit", "stop", "finish")):
@@ -159,9 +174,9 @@ def _view(renderer, sim, row):
         fraction = float(np.clip((row["observation"]["time"] - 1) / 3, 0, 1))
         blend = fraction * fraction * (3 - 2 * fraction)
         camera.lookat[:] = (1 - blend) * wide_center + blend * close_center
-        camera.distance = (1 - blend) * 8.5 + blend * max(5.4, float(np.linalg.norm(cart - cargo)) + 3)
-        camera.azimuth = 110
-        camera.elevation = -48
+        camera.distance = (1 - blend) * 8.5 + blend * max(4.0, float(np.linalg.norm(cart - cargo)) + 2.7)
+        camera.azimuth = 215
+        camera.elevation = (1 - blend) * -50 + blend * -30
     renderer.update_scene(sim.data, camera=camera)
     # This marker is an operator visualization of the measured whole-trolley COM.
     scene = renderer.scene
@@ -266,7 +281,7 @@ def render(output: Path, nominal_sim, actual_sim, traces: list[dict], report: di
                 draw.text((24, 17), "REALITYPATCH / CARGO DYNAMICS", font=small, fill="#9ab1c4")
                 draw.text((24, 43), "A sharp turn. A lost load." if curve else "When cargo breaks loose",
                           font=title, fill="#f4f7fa")
-                subtitle = "Marked 90-degree bend  /  Same route controller" if curve else "Identical motor commands  /  Physical MuJoCo replay"
+                subtitle = "Train-style track  /  Physical slide, tip and landing" if curve else "Identical motor commands  /  Physical MuJoCo replay"
                 draw.text((24, 91), subtitle, font=small, fill="#b4c5d3")
                 draw.text((792, 29), label, font=font, fill=colors[1])
                 draw.text((792, 64), f"{when:04.1f} / {duration:.1f} seconds", font=font, fill="#f4f7fa")
@@ -301,7 +316,7 @@ def render(output: Path, nominal_sim, actual_sim, traces: list[dict], report: di
                 else:
                     draw.text((788, 689), "GPT-6 investigation ready", font=font, fill="#f4f7fa")
                     draw.text((788, 722), "No candidate repair evaluated in this replay", font=small, fill="#adc0d0")
-                legend = "Grey: intended track   /   Pink: released cargo" if curve else "Pink marker: center of mass (raised for visibility)"
+                legend = "Grey: intended route   /   Pink: released parcel" if curve else "Pink marker: center of mass (raised for visibility)"
                 draw.text((44, 755), legend, font=small, fill="#adc0d0")
                 draw.text((24, 793), explanation, font=font, fill="#f4f7fa")
                 draw.rectangle((24, 825, 24 + round(1232 * when / duration), 829), fill=colors[1])
@@ -313,10 +328,16 @@ def render(output: Path, nominal_sim, actual_sim, traces: list[dict], report: di
                 frames.append(canvas.quantize(colors=160))
                 if index % max(1, fps * 2) == 0:
                     print(f"Rendering {when:.1f} / {duration:.1f} s", flush=True)
-        delays = [round(1000 / fps)] * len(frames)
+        # GIF stores centiseconds: distribute 30/40 ms holds at 30 fps rather
+        # than truncating every frame to 30 ms and speeding up the physical fall.
+        delays = [10 * (round((i + 1) * 100 / fps) - round(i * 100 / fps)) for i in range(len(frames))]
         delays[-1] = 2200
         frames[0].save(output / "animation.gif", save_all=True, append_images=frames[1:],
                        duration=delays, loop=0, optimize=False, disposal=2)
+        if encoder is not None and encoder.stdin is not None:
+            # Match the GIF's final hold without adding any simulated motion.
+            for _ in range(max(0, round(2.2 * fps) - 1)):
+                encoder.stdin.write(canvas.tobytes())
     finally:
         if encoder is not None:
             if encoder.stdin is not None:
@@ -331,7 +352,7 @@ def render(output: Path, nominal_sim, actual_sim, traces: list[dict], report: di
 
 
 def build(output: Path, *, scenario="warehouse_curve_demo", overrides=None,
-          candidate: Path | None = None, fps=15, media=True) -> dict:
+          candidate: Path | None = None, fps=30, media=True) -> dict:
     if scenario not in warehouse.PRESETS or not scenario.startswith("warehouse_"):
         raise ValueError("Choose an existing warehouse scenario")
     if type(fps) is not int or not 1 <= fps <= 60:
@@ -399,7 +420,7 @@ def main(argv=None):
     parser.add_argument("--scenario", default="warehouse_curve_demo")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--candidate", type=Path, help="execute this model artifact; never assumes it is repaired")
-    parser.add_argument("--fps", type=int, default=15)
+    parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--set", dest="settings", action="append", metavar="NAME=VALUE")
     parser.add_argument("--no-media", action="store_true", help="record and compare physics without rendering")
     args = parser.parse_args(argv)
