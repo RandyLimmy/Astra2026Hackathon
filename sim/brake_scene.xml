@@ -1,0 +1,26 @@
+<mujoco model="RealityPatch synthetic braking rig">
+  <compiler angle="degree"/>
+  <option timestep="0.01" gravity="0 0 0" integrator="RK4"/>
+  <visual>
+    <global offwidth="1440" offheight="900"/>
+    <headlight ambient="0.35 0.35 0.35" diffuse="0.7 0.7 0.7"/>
+  </visual>
+  <default>
+    <geom contype="0" conaffinity="0"/>
+    <joint damping="0" armature="0" frictionloss="0"/>
+  </default>
+  <worldbody>
+    <light pos="10 -8 20" dir="0 0 -1"/>
+    <geom name="ground" type="plane" size="250 8 0.1" rgba="0.12 0.16 0.20 1"/>
+    <body name="car" pos="0 0 0.6">
+      <joint name="travel" type="slide" axis="1 0 0"/>
+      <inertial pos="0 0 0" mass="1200" diaginertia="700 1800 2100"/>
+      <geom name="chassis" type="box" size="1.8 0.8 0.35" rgba="0.18 0.52 0.88 1"/>
+      <geom name="cabin" type="box" pos="-0.2 0 0.55" size="0.9 0.66 0.3" rgba="0.30 0.68 0.96 1"/>
+      <geom name="wheel_fl" type="cylinder" pos="1.1 0.83 -0.25" euler="90 0 0" size="0.35 0.12" rgba="0.04 0.05 0.06 1"/>
+      <geom name="wheel_fr" type="cylinder" pos="1.1 -0.83 -0.25" euler="90 0 0" size="0.35 0.12" rgba="0.04 0.05 0.06 1"/>
+      <geom name="wheel_rl" type="cylinder" pos="-1.1 0.83 -0.25" euler="90 0 0" size="0.35 0.12" rgba="0.04 0.05 0.06 1"/>
+      <geom name="wheel_rr" type="cylinder" pos="-1.1 -0.83 -0.25" euler="90 0 0" size="0.35 0.12" rgba="0.04 0.05 0.06 1"/>
+    </body>
+  </worldbody>
+</mujoco>

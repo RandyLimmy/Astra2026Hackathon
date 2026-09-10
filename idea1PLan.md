@@ -18,7 +18,9 @@ This approach best matches our intended **source-code extension** contribution. 
 
 The repair improves the prediction; it does not physically improve the brakes. On the final trial, show the original prediction, repaired prediction, and actual reference trajectory for the same commands. A later feature could use the improved model to recommend earlier braking.
 
-The current repository contains the two idea documents and no implementation. This plan assumes two builders and uses a **five-hour working timebox**, not a confirmed event deadline. If there is more time, expand validation before adding another use case. Person 1 and Person 2 below are interchangeable role assignments based on your strengths.
+The first mechanics foundation is now implemented; see [README.md](README.md) for setup and run commands. It includes the MuJoCo braking scene, editable actuator, isolated macOS component worker, synthetic fade/reference controls, development parameter fitting, and native trajectory replay. The stateful solvability check is developer-written, not an Astra repair. The seven-tool API loop, final holdout lock/reveal, browser controls, and later scenarios remain to be built.
+
+This plan assumes two builders and uses a **five-hour working timebox**, not a confirmed event deadline. If there is more time, expand validation before adding another use case. Person 1 and Person 2 below are interchangeable role assignments based on your strengths.
 
 ### Required setup: obtain an OpenAI API key
 
@@ -422,7 +424,8 @@ Define a small scenario adapter only when adding the second use case: observatio
 
 - [ ] Assign Person 1 to section 6 and Person 2 to section 7; confirm actual build time.
 - [ ] Person 2 obtains/configures the OpenAI API key and verifies model access with a small request.
-- [ ] Person 1 installs MuJoCo and verifies that the Python actuator's force drives the minimal mechanical scene.
+- [x] Person 1 installs MuJoCo and verifies that the Python actuator's force drives the minimal mechanical scene.
+- [x] Build and test the isolated component worker, synthetic history-dependent reference, development baseline fitting, and native replay.
 - [ ] Commit the shared schema, one fake run artifact, and the dependency setup.
 - [ ] Agree the seven public tool contracts, eight-scenario stages, and separate agent/operator config schemas.
 - [ ] Verify that the investigation task package and candidate worker cannot access engine/reference internals, and that tool results contain only the neutral schema.

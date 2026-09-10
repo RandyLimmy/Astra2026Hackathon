@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "realitypatch"
+version = "0.1.0"
+description = "Synthetic braking experiments with an editable Python actuator and MuJoCo mechanics"
+requires-python = ">=3.12"
+dependencies = [
+  "mujoco==3.13.0",
+  "numpy==2.5.3",
+  "scipy==1.18.1",
+  "matplotlib==3.11.1",
+  "pillow==12.3.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1"]
+
+[project.scripts]
+realitypatch = "sim.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sim*", "contracts*", "component_worker*", "reference_host*", "demo*", "evaluation*"]
+
+[tool.setuptools.package-data]
+sim = ["*.xml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
