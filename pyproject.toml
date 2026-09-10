@@ -1,0 +1,14 @@
+[tool.ruff]
+line-length = 110
+extend-exclude = ["mujoco", ".venv", "runs"]
+
+[tool.mypy]
+files = ["simulator"]
+exclude = ["^mujoco/", "^runs/"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# MuJoCo exposes its API through native extensions; the adjacent upstream
+# checkout otherwise makes mypy resolve it as an empty namespace package.
+module = ["mujoco", "mujoco.*"]
+follow_imports = "skip"

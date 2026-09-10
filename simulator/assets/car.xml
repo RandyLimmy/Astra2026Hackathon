@@ -1,0 +1,62 @@
+<mujocoinclude>
+  <worldbody>
+    <body name="chassis" pos="0 0 0.58">
+      <freejoint name="chassis_free"/>
+      <inertial pos="0 0 0" mass="1100" diaginertia="250 1500 1700"/>
+      <geom name="chassis_geom" type="box" size="2 0.8 0.18" material="paint"/>
+      <geom type="box" pos="-0.25 0 0.32" size="0.85 0.67 0.2" material="glass" contype="0" conaffinity="0" mass="0"/>
+      <geom type="box" pos="1.95 0.5 0.02" size="0.06 0.18 0.06" rgba="1 0.95 0.65 1" contype="0" conaffinity="0" mass="0"/>
+      <geom type="box" pos="1.95 -0.5 0.02" size="0.06 0.18 0.06" rgba="1 0.95 0.65 1" contype="0" conaffinity="0" mass="0"/>
+      <site name="front_bumper" pos="2 0 0" size="0.01" rgba="0 0 0 0"/>
+      <camera name="chase" mode="trackcom" pos="-8 -10 6" xyaxes="0.8 -0.6 0 0.25 0.33 0.91" fovy="55"/>
+    </body>
+    <body name="carrier_FL" pos="1.35 0.98 0.34">
+      <freejoint name="carrier_FL_free"/>
+      <inertial pos="0 0 0" mass="3" diaginertia="0.02 0.02 0.02"/>
+      <body name="wheel_FL">
+        <joint name="spin_FL" axis="0 1 0" damping="0.02" armature="0.1"/>
+        <geom name="tire_FL" type="ellipsoid" size="0.34 0.12 0.34" mass="22" material="rubber"/>
+        <geom type="box" size="0.24 0.125 0.025" rgba="0.8 0.85 0.9 1" mass="0" contype="0" conaffinity="0"/>
+      </body>
+    </body>
+    <body name="carrier_FR" pos="1.35 -0.98 0.34">
+      <freejoint name="carrier_FR_free"/>
+      <inertial pos="0 0 0" mass="3" diaginertia="0.02 0.02 0.02"/>
+      <body name="wheel_FR">
+        <joint name="spin_FR" axis="0 1 0" damping="0.02" armature="0.1"/>
+        <geom name="tire_FR" type="ellipsoid" size="0.34 0.12 0.34" mass="22" material="rubber"/>
+        <geom type="box" size="0.24 0.125 0.025" rgba="0.8 0.85 0.9 1" mass="0" contype="0" conaffinity="0"/>
+      </body>
+    </body>
+    <body name="carrier_RL" pos="-1.35 0.98 0.34">
+      <freejoint name="carrier_RL_free"/>
+      <inertial pos="0 0 0" mass="3" diaginertia="0.02 0.02 0.02"/>
+      <body name="wheel_RL">
+        <joint name="spin_RL" axis="0 1 0" damping="0.02" armature="0.1"/>
+        <geom name="tire_RL" type="ellipsoid" size="0.34 0.12 0.34" mass="22" material="rubber"/>
+        <geom type="box" size="0.24 0.125 0.025" rgba="0.8 0.85 0.9 1" mass="0" contype="0" conaffinity="0"/>
+      </body>
+    </body>
+    <body name="carrier_RR" pos="-1.35 -0.98 0.34">
+      <freejoint name="carrier_RR_free"/>
+      <inertial pos="0 0 0" mass="3" diaginertia="0.02 0.02 0.02"/>
+      <body name="wheel_RR">
+        <joint name="spin_RR" axis="0 1 0" damping="0.02" armature="0.1"/>
+        <geom name="tire_RR" type="ellipsoid" size="0.34 0.12 0.34" mass="22" material="rubber"/>
+        <geom type="box" size="0.24 0.125 0.025" rgba="0.8 0.85 0.9 1" mass="0" contype="0" conaffinity="0"/>
+      </body>
+    </body>
+  </worldbody>
+  <equality>
+    <weld name="attach_FL" body1="chassis" body2="carrier_FL" solref="0.008 1"/>
+    <weld name="attach_FR" body1="chassis" body2="carrier_FR" solref="0.008 1"/>
+    <weld name="attach_RL" body1="chassis" body2="carrier_RL" solref="0.008 1"/>
+    <weld name="attach_RR" body1="chassis" body2="carrier_RR" solref="0.008 1"/>
+  </equality>
+  <actuator>
+    <motor name="torque_FL" joint="spin_FL" ctrlrange="-1500 1500"/>
+    <motor name="torque_FR" joint="spin_FR" ctrlrange="-1500 1500"/>
+    <motor name="torque_RL" joint="spin_RL" ctrlrange="-1500 1500"/>
+    <motor name="torque_RR" joint="spin_RR" ctrlrange="-1500 1500"/>
+  </actuator>
+</mujocoinclude>

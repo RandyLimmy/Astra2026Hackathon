@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "description": "Front-right carrier releases at 3.1 seconds, at 17 m/s initial speed on a 70 m wall track.",
+  "config": {
+    "detach_wheel": "FR",
+    "detach_at": 3.1,
+    "initial_speed": 17,
+    "wall_x": 70
+  }
+}

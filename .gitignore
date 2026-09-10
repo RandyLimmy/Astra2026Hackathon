@@ -1,3 +1,12 @@
+.venv/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+runs/
+MUJOCO_LOG.TXT
+.DS_Store
+.omx/state/
 # Local environment files may contain API keys.
 .env
 .env.*
