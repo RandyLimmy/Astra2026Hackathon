@@ -135,3 +135,13 @@ Next work is the API-backed investigation, prospective experiment records,
 development regression service, frozen final-suite predictions and reveal,
 and the operator UI. The local `.env` remains ignored; this physics milestone
 does not read it or make OpenAI API requests.
+
+Only **one API key** is needed: `OPENAI_API_KEY`. `ASTRA_MODEL` and the optional
+`SOL_MODEL` select model IDs for the planned investigator and comparison runs;
+they are not credentials. Both use the same key when its API project can access
+the selected models. Sol is unnecessary for the first Astra-only loop. See
+[.env.example](.env.example), the official
+[API quickstart](https://developers.openai.com/api/docs/quickstart), and
+[model IDs](https://developers.openai.com/api/docs/models). The future backend
+must explicitly load `.env` or receive exported environment variables; merely
+creating the file does not connect the current simulator to OpenAI.
