@@ -9,9 +9,9 @@ from openai import OpenAI
 
 
 MODEL = "gpt-6-astra"
-REASONING_EFFORT = "xhigh"
+REASONING_EFFORT = "max"
 API_BASE = "https://api.openai.com/v1"
-DEFAULT_PROFILE = "astra-xhigh"
+DEFAULT_PROFILE = "astra-max"
 
 
 @dataclass(frozen=True)
@@ -23,14 +23,16 @@ class ModelProfile:
 
 
 PROFILES = {
-    "astra-xhigh": ModelProfile("astra-xhigh", MODEL, REASONING_EFFORT, "ASTRA"),
+    "astra-max": ModelProfile("astra-max", MODEL, "max", "ASTRA"),
+    "sol-max": ModelProfile("sol-max", "gpt-5.6-sol", "max", "SOL"),
+    "astra-xhigh": ModelProfile("astra-xhigh", MODEL, "xhigh", "ASTRA"),
     "sol-high": ModelProfile("sol-high", "gpt-5.6-sol", "high", "SOL"),
 }
 
 
 def get_profile(name=DEFAULT_PROFILE):
     if not isinstance(name, str) or name not in PROFILES:
-        raise ValueError("Select the astra-xhigh or sol-high investigation profile")
+        raise ValueError("Select an investigation profile: " + ", ".join(PROFILES))
     return PROFILES[name]
 
 

@@ -1,14 +1,12 @@
-import { useEffect, useState } from 'react';
-import { elapsedLabel, request, runLabel, verdict } from './api.js';
-import { useRun, useRuns } from './hooks.js';
-import Replay from './components/Replay.jsx';
-import Investigator from './components/Investigator.jsx';
-import Comparison from './components/Comparison.jsx';
+import { useEffect, useRef, useState } from 'react';
+import { request } from './api.js';
+import { comparisonLabel, readable } from './paired.js';
+import { useComparison, useComparisons, useScenarios } from './pairedHooks.js';
+import OriginalScenario from './components/OriginalScenario.jsx';
+import AgentTracks from './components/AgentTracks.jsx';
+import OutcomeComparison from './components/OutcomeComparison.jsx';
+import { PlayIcon } from './components/Icons.jsx';
 import ScenarioReplay from './components/ScenarioReplay.jsx';
-
-function initialSelection() {
-  return new URL(window.location.href).searchParams.get('run') || '';
-}
 
 export default function App() {
   if (window.__SCENARIO_REPLAY__ || new URL(window.location.href).searchParams.get('view') === 'scenarios') {
@@ -18,88 +16,65 @@ export default function App() {
 }
 
 function InvestigationApp() {
-  const listing = useRuns();
-  const [selectedId, setSelectedId] = useState(initialSelection);
-  const detail = useRun(selectedId);
-  const [selectedCase, setSelectedCase] = useState('');
-  const [profile, setProfile] = useState('sol-high');
+  const catalog = useScenarios();
+  const listing = useComparisons();
+  const [selectedId, setSelectedId] = useState('');
+  const [platformId, setPlatformId] = useState('drone');
+  const [scenarioId, setScenarioId] = useState('');
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState('');
-  const [tab, setTab] = useState('activity');
-  const [view, setView] = useState('scenario');
-  const run = detail.run;
-  const activeId = listing.active_run_id || listing.runs.find(item => item.active)?.id;
+  const initialized = useRef(false);
+  const syncedId = useRef('');
+  const detail = useComparison(selectedId);
+  const platforms = catalog.data?.platforms ?? [];
+  const comparisons = listing.data?.comparisons ?? [];
+  const comparison = detail.data;
+  const platform = platforms.find(item => item.id === platformId) || platforms[0];
+  const scenarios = platform?.scenarios ?? [];
+  const scenario = scenarios.find(item => item.id === scenarioId) || scenarios.find(item => item.id === platform?.default_scenario) || scenarios[0];
+  const activeId = listing.data?.active_comparison_id;
+  const error = startError || catalog.error || listing.error || detail.error;
 
   useEffect(() => {
-    if (listing.runs.length && !selectedId) {
-      // A completed run with actual results gives first-time visitors something
-      // to inspect; active runs remain available immediately in the selector.
-      setSelectedId(listing.runs.find(item => item.aggregate)?.id || listing.runs[0].id);
-    }
-  }, [listing.runs, selectedId]);
-
+    if (listing.loading || !listing.data || initialized.current) return;
+    initialized.current = true;
+    if (comparisons.length) setSelectedId(activeId || comparisons[0].id);
+  }, [listing.loading, listing.data, comparisons, activeId]);
   useEffect(() => {
-    const url = new URL(window.location.href);
-    if (selectedId) url.searchParams.set('run', selectedId);
-    else url.searchParams.delete('run');
-    window.history.replaceState({}, '', url);
-    setSelectedCase('');
-  }, [selectedId]);
-
-  useEffect(() => {
-    const cases = (run?.evaluation?.cases ?? []).filter(item => typeof item.case_id === 'string');
-    if (cases.length && !cases.some(item => item.case_id === selectedCase)) {
-      setSelectedCase(cases.find(item => item.config?.preparation_cycles > 0 && !item.config?.wait_s)?.case_id || cases[0].case_id);
-    }
-  }, [run?.evaluation?.cases, selectedCase]);
-
-  async function startRun() {
-    if (starting || activeId || listing.loading) return;
+    if (!comparison || syncedId.current === comparison.id) return;
+    syncedId.current = comparison.id;
+    const record = comparison.manifest ?? comparison;
+    if (record.platform) setPlatformId(record.platform);
+    if (record.scenario) setScenarioId(record.scenario);
+  }, [comparison]);
+  function choosePlatform(value) { setPlatformId(value); setScenarioId(''); setSelectedId(''); syncedId.current = ''; }
+  function chooseScenario(value) { setScenarioId(value); setSelectedId(''); syncedId.current = ''; }
+  async function startPair() {
+    if (!platform || !scenario || starting || activeId) return;
     setStarting(true); setStartError('');
     try {
-      const result = await request('/api/runs', { method: 'POST', body: JSON.stringify({ profile }) });
-      setSelectedId(result.id); setTab('activity'); setView('investigation');
-      await listing.refresh();
-    } catch (failure) {
-      setStartError(failure.message);
-    } finally {
-      setStarting(false);
-    }
+      const result = await request('/api/comparisons', { method: 'POST', body: JSON.stringify({ platform: platform.id, scenario: scenario.id }) });
+      const id = result.id || result.comparison_id || result.comparison?.id;
+      if (!id) throw new Error('The server started a request but returned no comparison identifier. Refresh the recordings before trying again.');
+      setSelectedId(id); listing.refresh();
+    } catch (failure) { setStartError(failure.message); }
+    finally { setStarting(false); }
   }
-
-  function showPrompts() {
-    setTab('prompts'); setView('investigation');
-  }
-
-  const latest = run?.status === 'completed'
-    ? `Completed · prediction criteria ${verdict(run.aggregate || run.evaluation?.aggregate, run.status).text.toLowerCase()}${run.media_status === 'rendering' || run.media_status === 'queued' ? ' · preparing replay frames' : ''}`
-    : run?.latest_status || (run?.active ? 'Investigation is running. Activity updates automatically.' : '');
-  const requests = run?.api_requests ?? run?.metadata?.api_requests;
-  const error = startError || listing.error || detail.error;
-  const mergedRuns = listing.runs.map(item => item.id === run?.id ? { ...item, metadata: run.metadata, aggregate: run.aggregate || run.evaluation?.aggregate, status: run.status } : item);
+  function retry() { setStartError(''); catalog.refresh(); listing.refresh(); detail.refresh(); }
+  const profiles = catalog.data?.profiles ?? comparison?.manifest?.profiles ?? {};
   return <>
-    <header className="app-header">
-      <a className="brand" href={window.location.pathname} aria-label="RealityPatch home">RealityPatch</a>
-      <a className="text-button" href="?view=scenarios">Failure demos</a>
-      <select className="run-selector" aria-label="Recorded run" value={selectedId} onChange={event => setSelectedId(event.target.value)} disabled={!listing.runs.length}>
-        {!listing.runs.length && <option value="">{listing.loading ? 'Loading experiments…' : 'No recorded runs'}</option>}
-        {selectedId && !listing.runs.some(item => item.id === selectedId) && <option value={selectedId}>{selectedId}</option>}
-        {listing.runs.map(item => <option key={item.id} value={item.id}>{runLabel(item)}{item.active ? ' · running' : ''}</option>)}
-      </select>
-      <div className="start-controls"><select aria-label="New investigation profile" value={profile} onChange={event => setProfile(event.target.value)} disabled={starting}><option value="astra-xhigh">Astra / extra high</option><option value="sol-high">Sol / high</option></select><button className="primary start-button" type="button" disabled={starting || listing.loading || Boolean(activeId) || Boolean(listing.error)} onClick={startRun} title={activeId ? 'An investigation is already active' : 'Start a bounded investigation using the configured local API key'}>{starting ? 'Starting…' : activeId ? 'Run active' : 'Start run'}</button></div>
-    </header>
-    {error && <div className="error-banner" role="alert"><span>{error}</span><button type="button" className="text-button" onClick={() => { setStartError(''); listing.refresh(); }}>Retry connection</button></div>}
-    {(latest || requests !== undefined || detail.loading) && <div className="run-status" role="status"><span>{detail.loading && !run ? 'Loading experiment…' : latest || `Recorded run · ${run?.status || 'status unavailable'}`}</span><span>{requests !== undefined ? `${requests} API requests` : ''}{run?.tool_calls !== undefined ? ` · ${run.tool_calls} tool calls` : ''}{elapsedLabel(run?.metadata) ? ` · ${elapsedLabel(run.metadata)}` : ''}</span></div>}
-    <main>
-      <nav className="workspace-nav" aria-label="Dashboard views">
-        {[['scenario', 'Scenario'], ['investigation', 'Investigation'], ['comparison', 'Compare runs']].map(([id, label]) =>
-          <button key={id} type="button" aria-pressed={view === id} className={view === id ? 'selected' : ''} onClick={() => setView(id)}>{label}</button>)}
-      </nav>
-      <div className="workspace" aria-busy={detail.loading}>
-        {view === 'scenario' && <Replay run={run} selectedCase={selectedCase} onSelectCase={setSelectedCase} />}
-        {view === 'investigation' && <Investigator key={run?.id || selectedId} run={run} tab={tab} setTab={setTab} />}
-        {view === 'comparison' && <Comparison runs={mergedRuns} selectedId={selectedId} onSelect={id => { setSelectedId(id); setView('scenario'); }} showPrompts={showPrompts} />}
+    <header className="app-header"><a className="brand" href={window.location.pathname}>RealityPatch</a>
+      <div className="scenario-controls"><label>Platform<select aria-label="Platform" value={platform?.id || ''} onChange={event => choosePlatform(event.target.value)} disabled={!platforms.length || starting}>{!platforms.length && <option value="">{catalog.loading ? 'Loading…' : 'Unavailable'}</option>}{platforms.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+        <label>Preset<select aria-label="Scenario preset" value={scenario?.id || ''} onChange={event => chooseScenario(event.target.value)} disabled={!scenarios.length || starting}>{!scenarios.length && <option value="">No presets available</option>}{scenarios.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
       </div>
+      <button className="primary start-button" type="button" disabled={starting || !scenario || Boolean(activeId) || catalog.loading || listing.loading || Boolean(catalog.error || listing.error)} onClick={startPair}><PlayIcon />{starting ? 'Starting…' : activeId ? 'Pair running' : 'Run Astra + Sol'}</button>
+      <label className="recording-control">Recording<select aria-label="Recorded comparison" value={selectedId} onChange={event => { setSelectedId(event.target.value); syncedId.current = ''; }}><option value="">{listing.loading ? 'Loading recordings…' : 'New comparison'}</option>{selectedId && !comparisons.some(item => item.id === selectedId) && <option value={selectedId}>{selectedId}</option>}{comparisons.map(item => <option key={item.id} value={item.id}>{comparisonLabel(item)}</option>)}</select></label>
+    </header>
+    {error && <div className="error-banner" role="alert"><span>{error}</span><button className="text-button" type="button" onClick={retry}>Retry connection</button></div>}
+    <main><div className="page-intro"><h1>One scenario. Two approaches.</h1><p>Original behavior, exact changes, measured results.</p><a className="failure-demos-link" href="?view=scenarios">Browse failure demos →</a></div>
+      {(comparison || detail.loading || activeId) && <div className="comparison-status" role="status"><span>{detail.loading && !comparison ? 'Loading the recorded comparison…' : comparison ? `${scenario?.label || readable(comparison.manifest?.scenario)} · ${comparison.active ? 'Both investigations update independently' : readable(comparison.status) || 'Recorded comparison'}` : 'A comparison is running.'}</span>{activeId && selectedId !== activeId && <button className="text-button" type="button" onClick={() => setSelectedId(activeId)}>View active comparison</button>}</div>}
+      <div aria-busy={detail.loading}><OriginalScenario comparison={comparison} platform={platform} scenario={scenario} /><AgentTracks comparison={comparison} profiles={profiles} /><OutcomeComparison comparison={comparison} /></div>
+      <footer>New car · Drone · Robot dog<span>Two independent investigations. Every result backed by a recording.</span></footer>
     </main>
   </>;
 }

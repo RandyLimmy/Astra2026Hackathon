@@ -5,6 +5,7 @@ import difflib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -13,9 +14,12 @@ import time
 from urllib.parse import parse_qs, unquote, urlsplit
 from uuid import uuid4
 
+from . import platform_story
+
 
 ROOT = Path(__file__).resolve().parents[1]
-PROFILES = {"astra-xhigh": ("gpt-6-astra", "xhigh"), "sol-high": ("gpt-5.6-sol", "high")}
+PROFILES = {"astra-xhigh": ("gpt-6-astra", "xhigh"), "sol-high": ("gpt-5.6-sol", "high"),
+            "astra-max": ("gpt-6-astra", "max"), "sol-max": ("gpt-5.6-sol", "max")}
 TRACKS = {"reference", "candidate", "original"}
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}\Z")
 TERMINAL = {"completed", "submitted", "error", "api_error", "evaluation_error", "interrupted", "failed"}
@@ -82,7 +86,7 @@ def read_events(path: Path):
             continue
         if isinstance(event, dict) and event.get("type") in {
             "status", "error", "api_response", "assistant_message", "reasoning_summary",
-            "tool_call", "tool_result", "evaluation",
+            "tool_call", "tool_result", "evaluation", "host_message",
         }:
             if event["type"] == "evaluation":
                 event = {**event, "result": compact_evaluation(event.get("result"))}
@@ -93,6 +97,8 @@ def read_events(path: Path):
 def compact_evaluation(value):
     if not isinstance(value, dict):
         return None
+    if value.get("kind") == "platform_repair_verification":
+        return platform_story.compact(value)
     result = {key: val for key, val in value.items() if key != "cases"}
     result["cases"] = []
     for case in value.get("cases", []):
@@ -116,6 +122,7 @@ class Dashboard:
         self.dist_dir = self.root / "frontend" / "dist"
         self.launcher = launcher
         self.jobs = {}
+        self.comparison_jobs = {}
         self.lock = threading.RLock()
         self.monitor_jobs = monitor_jobs
         self.stop_monitor = threading.Event()
@@ -192,7 +199,7 @@ class Dashboard:
         status = metadata.get("status", "running")
         last_status = next((e.get("message") for e in reversed(events) if e["type"] in {"status", "error"}), None)
         if status not in TERMINAL:
-            if evaluation:
+            if evaluation and metadata.get("kind") != "platform_investigation":
                 status = "completed"
             elif any(e["type"] == "status" and ("Source frozen." in e.get("message", "") or
                                                e.get("message", "").startswith("Evaluation:")) for e in events):
@@ -200,6 +207,10 @@ class Dashboard:
             if job and job["ended_at"] and status not in TERMINAL:
                 status = "failed"
                 last_status = "The investigation process exited before recording completion."
+        if metadata.get("kind") == "platform_investigation" and status not in TERMINAL:
+            if isinstance(metadata.get("pid"), int) and not self._pid_alive(metadata["pid"]):
+                status = "interrupted"
+                last_status = "The investigation process is no longer running; recorded evidence is preserved."
         requests = sum(e["type"] == "api_response" for e in events)
         for event in events:
             match = re.search(r"API request (\d+)/", event.get("message", ""))
@@ -207,7 +218,7 @@ class Dashboard:
                 requests = max(requests, int(match.group(1)))
         requests = max(requests, metadata.get("api_requests", 0) or 0)
         calls = sum(e["type"] == "tool_call" for e in events)
-        active = bool(job and not job["ended_at"]) or status in {"starting", "running", "evaluating"}
+        active = bool(job and not job["ended_at"]) or status in {"starting", "running", "evaluating", "finalizing"}
         return {"id": run_id, "metadata": metadata, "aggregate": evaluation.get("aggregate") if evaluation else None,
                 "status": status, "active": active, "latest_status": last_status,
                 "media_status": job["media_status"] if job else None,
@@ -301,8 +312,10 @@ class Dashboard:
     def start_run(self, body):
         if (not isinstance(body, dict) or set(body) != {"profile"} or
                 not isinstance(body["profile"], str) or body["profile"] not in PROFILES):
-            raise RequestError(400, "Choose profile astra-xhigh or sol-high.")
+            raise RequestError(400, "Choose a supported model profile.")
         with self.lock:
+            if self.list_comparisons()["active_comparison_id"]:
+                raise RequestError(409, "A comparison is already active.")
             if self.list_runs()["active_run_id"]:
                 raise RequestError(409, "An investigation is already active.")
             self.runs_dir.mkdir(exist_ok=True)
@@ -323,6 +336,151 @@ class Dashboard:
                 self.monitor = threading.Thread(target=self._monitor_jobs, daemon=True)
                 self.monitor.start()
             return {"id": run_id, "status": "starting"}
+
+    @staticmethod
+    def _pid_alive(pid):
+        if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+        return True
+
+    def scenario_catalog(self):
+        return platform_story.scenarios()
+
+    def comparison_summary(self, comparison_id):
+        self.run_path(comparison_id)
+        manifest = read_json(self.artifact(comparison_id, "comparison.json"))
+        manifest = manifest if isinstance(manifest, dict) else {}
+        with self.lock:
+            job = self.comparison_jobs.get(comparison_id)
+            job = dict(job) if job else None
+        if not job and manifest.get("kind") != "platform_parallel_comparison":
+            raise RequestError(404, "Comparison not found.")
+        status = manifest.get("status", "launching")
+        active = status not in TERMINAL
+        latest_status = None
+        if active:
+            if job:
+                active = job["process"].poll() is None
+            else:
+                active = self._pid_alive(manifest.get("supervisor_pid")) or any(
+                    self._pid_alive(row.get("pid")) for row in manifest.get("runs", []) if isinstance(row, dict))
+            if not active:
+                status = "interrupted" if not job else "failed"
+                latest_status = "The comparison process exited before recording completion. Saved child results remain available."
+        fallback = job or {}
+        return {"id": comparison_id, "platform": manifest.get("platform", fallback.get("platform")),
+                "scenario": manifest.get("scenario", fallback.get("scenario")), "status": status, "active": active,
+                "start_at": manifest.get("start_at", fallback.get("started_at")), "end_at": manifest.get("end_at"),
+                "comparison_valid": manifest.get("comparison_valid"), "warnings": manifest.get("warnings", []),
+                "latest_status": latest_status,
+                "runs": {label: comparison_id + "-" + label for label in ("astra", "sol")}}
+
+    def list_comparisons(self):
+        if self.runs_dir.is_symlink():
+            raise RequestError(404, "Run directory unavailable.")
+        with self.lock:
+            ids = set(self.comparison_jobs)
+        if self.runs_dir.is_dir():
+            for path in self.runs_dir.iterdir():
+                if path.is_dir() and not path.is_symlink() and IDENTIFIER.fullmatch(path.name):
+                    try:
+                        if self.artifact(path.name, "comparison.json").is_file():
+                            ids.add(path.name)
+                    except RequestError:
+                        continue
+        results = []
+        for comparison_id in ids:
+            try:
+                results.append(self.comparison_summary(comparison_id))
+            except RequestError:
+                continue
+        results.sort(key=lambda value: (value.get("start_at") or "", value["id"]), reverse=True)
+        return {"comparisons": results,
+                "active_comparison_id": next((row["id"] for row in results if row["active"]), None)}
+
+    def platform_story(self, run_id):
+        return platform_story.story(self, run_id, self.summary(run_id))
+
+    def comparison_detail(self, comparison_id):
+        result = self.comparison_summary(comparison_id)
+        manifest = read_json(self.artifact(comparison_id, "comparison.json"))
+        result["manifest"] = platform_story.compact(manifest) if isinstance(manifest, dict) else {}
+        result["runs"] = {}
+        for label in ("astra", "sol"):
+            # Never follow metadata_file paths or arbitrary run IDs from a manifest.
+            run_id = comparison_id + "-" + label
+            try:
+                summary = self.summary(run_id)
+                if summary["status"] not in TERMINAL and not result["active"]:
+                    summary.update(status="interrupted", active=False,
+                                   latest_status="The comparison stopped before this investigation recorded completion.")
+                story = platform_story.story(self, run_id, summary)
+            except RequestError as error:
+                if error.status != 404:
+                    raise
+                profile = label + "-max"
+                model, effort = PROFILES[profile]
+                child = next((row for row in result["manifest"].get("runs", [])
+                              if isinstance(row, dict) and row.get("label") == label), {})
+                child_active = result["active"] and child.get("status") not in TERMINAL
+                status = "starting" if child_active else "failed"
+                latest = ("Waiting for child records." if child_active else
+                          "This investigation exited without recording run metadata; inspect the preserved child log.")
+                summary = {"id": run_id, "status": status, "active": child_active, "aggregate": None,
+                           "metadata": {"platform": result["platform"], "profile": profile, "model": model,
+                                        "reasoning_effort": effort, "status": status},
+                           "api_requests": 0, "tool_calls": 0, "latest_status": latest}
+                story = {"id": run_id, "metadata": summary["metadata"], "status": status,
+                         "active": summary["active"], "checkpoints": [], "replays": [], "events": [],
+                         "verification": {"status": "pending", "goal_achieved": None}, "metrics": {}}
+            result["runs"][label] = {"summary": summary, "story": story}
+        return result
+
+    def platform_media_path(self, run_id, parts):
+        self.run_path(run_id)
+        parsed = platform_story.frame_parts("/".join(parts))
+        if parsed is None:
+            raise RequestError(404, "Recorded media not found.")
+        record = read_json(self.artifact(run_id, *parts[:-2], "record.json"))
+        relative = "/".join(parts[-3:])
+        if not isinstance(record, dict) or not any(
+                isinstance(frame, dict) and frame.get("file", frame.get("path")) == relative
+                for frame in record.get("frames", [])):
+            raise RequestError(404, "Recorded media not found.")
+        return self.artifact(run_id, *parts)
+
+    def start_comparison(self, body):
+        if (not isinstance(body, dict) or set(body) != {"platform", "scenario"} or
+                not platform_story.valid_scenario(body.get("platform"), body.get("scenario"))):
+            raise RequestError(400, "Choose an available new car, drone, or robot dog scenario.")
+        with self.lock:
+            if self.list_comparisons()["active_comparison_id"]:
+                raise RequestError(409, "A comparison is already active.")
+            if self.list_runs()["active_run_id"]:
+                raise RequestError(409, "An investigation is already active.")
+            self.runs_dir.mkdir(exist_ok=True)
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            comparison_id = f"pair-{body['platform']}-{stamp}-{uuid4().hex[:8]}"
+            output = self.run_path(comparison_id)
+            args = [str(self.root / ".venv" / "bin" / "python"), "-m", "investigation.platform_pair",
+                    "--platform", body["platform"], "--scenario", body["scenario"], "--output", str(output),
+                    "--max-api-requests", "16", "--max-seconds", "1800"]
+            try:
+                process = self.launcher(args, cwd=str(self.root), stdin=subprocess.DEVNULL,
+                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            except OSError:
+                raise RequestError(503, "The comparison process could not start.") from None
+            self.comparison_jobs[comparison_id] = {"process": process, "platform": body["platform"],
+                                                    "scenario": body["scenario"], "started_at": timestamp()}
+            return self.comparison_summary(comparison_id)
 
 
 class DashboardServer(ThreadingHTTPServer):
@@ -393,16 +551,27 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if parts[:2] == ["api", "scenarios"]:
                 from .scenarios import listing, media_path
                 if len(parts) == 2:
-                    return self._json(200, listing(app))
+                    # The paired investigator and saved failure viewer consume
+                    # independent collections from this shared catalog endpoint.
+                    return self._json(200, {**app.scenario_catalog(), **listing(app)})
                 if len(parts) >= 6 and parts[3] == "recordings":
                     return self._file(media_path(app, parts[2], parts[4], parts[5:]))
                 raise RequestError(404, "Scenario endpoint not found.")
+            if parts == ["api", "comparisons"]:
+                return self._json(200, app.list_comparisons())
+            if parts[:2] == ["api", "comparisons"] and (len(parts) == 3 or
+                    len(parts) == 4 and parts[3] == "story"):
+                return self._json(200, app.comparison_detail(parts[2]))
             if parts == ["api", "runs"]:
                 return self._json(200, app.list_runs())
             if parts[:2] == ["api", "runs"] and len(parts) >= 3:
                 run_id = parts[2]
                 if len(parts) == 3:
                     return self._json(200, app.detail(run_id))
+                if len(parts) == 4 and parts[3] == "story":
+                    return self._json(200, app.platform_story(run_id))
+                if len(parts) >= 8 and parts[3] == "platform-media":
+                    return self._file(app.platform_media_path(run_id, parts[4:]))
                 if len(parts) == 4 and parts[3] == "trace":
                     query = parse_qs(parsed.query)
                     if set(query) != {"case", "track"} or any(len(v) != 1 for v in query.values()):
@@ -429,7 +598,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             self._check_origin(mutation=True)
-            if self.path != "/api/runs":
+            if self.path not in {"/api/runs", "/api/comparisons"}:
                 raise RequestError(404, "Endpoint not found.")
             if self.headers.get_content_type() != "application/json":
                 raise RequestError(415, "Run creation requires JSON.")
@@ -445,7 +614,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(length))
             except (ValueError, UnicodeError):
                 raise RequestError(400, "Invalid JSON request.") from None
-            self._json(202, self.server.dashboard.start_run(body))
+            launch = (self.server.dashboard.start_comparison if self.path == "/api/comparisons"
+                      else self.server.dashboard.start_run)
+            self._json(202, launch(body))
         except RequestError as error:
             self._json(error.status, {"error": error.message})
         except (OSError, ValueError, TypeError):

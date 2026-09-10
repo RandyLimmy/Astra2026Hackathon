@@ -1,0 +1,793 @@
+{
+  "comparison_id": "paired-drone-20260910-001",
+  "platform": "drone",
+  "scenario": "drone_rotor_loss",
+  "start_at": "2026-09-10T19:38:23.988526+00:00",
+  "end_at": "2026-09-10T19:42:58.694399+00:00",
+  "comparison_valid": true,
+  "validation": {
+    "both_processes_completed": true,
+    "isolated_runs": true,
+    "model_efforts_confirmed": true,
+    "protocol_manifests_verified": true,
+    "protocol_fingerprints_match": true,
+    "predeclared_criteria_match": true,
+    "verification_cases_match": true,
+    "initial_conditions_match": true,
+    "system_prompts_verified_and_match": true,
+    "task_prompts_verified_and_match": true,
+    "initial_evidence_verified_and_match": true,
+    "tool_schema_verified_and_match": true,
+    "frozen_sources_verified": true
+  },
+  "max_api_requests": 16,
+  "max_seconds": 1800,
+  "api_reasoning_effort": "max",
+  "scope": "One matched pair on the implementation before integration of origin/main 4e2359c; no general model ranking.",
+  "runs": [
+    {
+      "label": "astra",
+      "model": "gpt-6-astra",
+      "reasoning_effort": "max",
+      "metrics": {
+        "duration_s": 273.2299475000036,
+        "api_requests": 11,
+        "tool_calls": 11,
+        "failed_tool_calls": 0,
+        "usage": {
+          "input_tokens": 1697634,
+          "output_tokens": 5475,
+          "total_tokens": 1703109,
+          "reasoning_tokens": 3178,
+          "cached_input_tokens": 1316359
+        },
+        "estimated_cost_usd": null,
+        "cost_note": "No billing estimate recorded; token counts are available.",
+        "agent_submitted": true,
+        "stop_reason": "agent_submission",
+        "verification_status": "completed",
+        "aggregate": {
+          "goal_achieved": true,
+          "predictive_success": true,
+          "mean_before_rmse_m": 1.9477444295829431,
+          "mean_after_rmse_m": 0.0,
+          "mean_prediction_rmse_m": 0.0
+        },
+        "goal": {
+          "title": "Complete hover and maneuver probes while remaining stable and airborne.",
+          "criteria": [
+            "Every verification probe completes and its public safe flag is true.",
+            "Every frozen prediction overlaps the full observed probe and has position RMSE at most 0.5 m."
+          ]
+        },
+        "action_summary": {
+          "repair_attempts": 1,
+          "repairs_applied": 1,
+          "model_edit_attempts": 2,
+          "model_edits_applied": 2,
+          "failed_attempts": 0,
+          "fix_attempted": true,
+          "change_applied": true,
+          "status": "goal_achieved"
+        },
+        "cases": [
+          {
+            "probe": "maneuver",
+            "duration_s": 10.0,
+            "before_difference": {
+              "position_rmse_m": 2.0173429173533832,
+              "maximum_position_error_m": 2.434334369052452,
+              "common_duration_s": 10.0,
+              "samples": 200,
+              "observed_outcome": "ground_contact",
+              "observed_within_envelope": false,
+              "reference_outcome": "within_probe_envelope"
+            },
+            "after_difference": {
+              "position_rmse_m": 0.0,
+              "maximum_position_error_m": 0.0,
+              "common_duration_s": 10.0,
+              "samples": 200,
+              "observed_outcome": "within_probe_envelope",
+              "observed_within_envelope": true,
+              "reference_outcome": "within_probe_envelope"
+            },
+            "prediction_difference": {
+              "position_rmse_m": 0.0,
+              "maximum_position_error_m": 0.0,
+              "common_duration_s": 10.0,
+              "samples": 200,
+              "observed_outcome": "within_probe_envelope",
+              "observed_within_envelope": true,
+              "reference_outcome": "within_probe_envelope"
+            }
+          },
+          {
+            "probe": "hover",
+            "duration_s": 10.0,
+            "before_difference": {
+              "position_rmse_m": 1.8781459418125033,
+              "maximum_position_error_m": 1.9555297433493566,
+              "common_duration_s": 10.0,
+              "samples": 200,
+              "observed_outcome": "ground_contact",
+              "observed_within_envelope": false,
+              "reference_outcome": "within_probe_envelope"
+            },
+            "after_difference": {
+              "position_rmse_m": 0.0,
+              "maximum_position_error_m": 0.0,
+              "common_duration_s": 10.0,
+              "samples": 200,
+              "observed_outcome": "within_probe_envelope",
+              "observed_within_envelope": true,
+              "reference_outcome": "within_probe_envelope"
+            },
+            "prediction_difference": {
+              "position_rmse_m": 0.0,
+              "maximum_position_error_m": 0.0,
+              "common_duration_s": 10.0,
+              "samples": 200,
+              "observed_outcome": "within_probe_envelope",
+              "observed_within_envelope": true,
+              "reference_outcome": "within_probe_envelope"
+            }
+          }
+        ]
+      },
+      "protocol_fingerprint": "8386697c95d0495090c7de37e6cfda8fbaab5790fdeefee316d3192b183e6a19",
+      "protocol_manifest": {
+        "schema_version": 2,
+        "platform": "drone",
+        "source_sha256": {
+          "candidate/platform_model.py": "d8cd6449d73e61667f35e9adf4b455976123d7bade9f745135485366a9ee08b3",
+          "component_worker/__init__.py": "650f91147d953331a7074e147abf0dd0c5383531aa69a6dc5a6a205a84b5f568",
+          "component_worker/client.py": "e31745c1fcd0838ee7bfaa4d0797ab53bb7fad151c69a4170126e21ea484769d",
+          "component_worker/platform_client.py": "dbdc62d5bc0ed30eded66c95ee9ebea7a30d912dd51be90c9a86a038fa2f9d8f",
+          "component_worker/platform_runtime.py": "497bdca1bb3e90d18ee8393840af5861d32b814d9fbcb54b300457655939b8af",
+          "component_worker/runtime.py": "b6bda5edf822d272315eeb5b2a72e35e00c87597ce0fdbfe275187876590882e",
+          "contracts/PLATFORM_MODEL.md": "fb54ba749228a604698723d3083f141e2e75f96ad6ccec5ad7b83a47ae244066",
+          "investigation/api.py": "efd713bbd7973f39588e840bbeadf65d8f07e0b99153f4c2d64ce0af12ce187e",
+          "investigation/platform_broker.py": "0bb776c0b3a18c0a4139f0a3a14b607f0eb937a64e91a987e33d85ce982a15a9",
+          "investigation/platform_physics.py": "2c23a76c4de8dc9ab599b889c7a138f8932b12a1543aa60a2207bcf531af096f",
+          "investigation/platform_run.py": "d9647e5e6edd323509de081cb01743a1bc90d3fce03ed98d80a8141bef164c17",
+          "investigation/platform_story.py": "7c268fd69a55bab5522567c5800c26e94ab45e0900a74fee62f45dde96cb94d9",
+          "investigation/prompts/platform_system.md": "559ab6a5a94ddbe5fbe9c48e5103f584a16fc1881d7f15ef7439ee0d262a3d73",
+          "investigation/runner.py": "ebe440a5df19b993ddad58e081b69e635a7fad6c1b82b1ee0858f7e6770e1ea6",
+          "simulator/assets/platforms/car_damage.xml": "db5f17adc69c40c610419785ab38488aad9c4bbe0b919858b53b6f9ecfc9cb08",
+          "simulator/assets/platforms/drone.xml": "abc4d8f7aef7b360f8df8ff10cf9011dadad3b2eb5ca3d5cfd386b516216ce46",
+          "simulator/assets/platforms/quadruped.xml": "a2812fb9eee63d76807ce80a6062c316676fa0ee38ec90f2fe39f80def470e3b",
+          "simulator/platforms/__init__.py": "dd46d47c98c4af4f4eaa139a6ab1c53745fb4e64f7a8b585a1b818516bc9541c",
+          "simulator/platforms/car_damage.py": "a22cfb2fc46dade4bcdbd641fa3ec70b5198890f0d1cbec18a345ad822092d9e",
+          "simulator/platforms/drone.py": "b36db82938d0666330777598ac8ba1d73554f6791aeb020925f14a3fbac80895",
+          "simulator/platforms/quadruped.py": "0c222168bdd4de6ac8872215ad9ff276f1f46686548d75e9761194a734d2c554"
+        },
+        "runtime_versions": {
+          "python": "3.13.7",
+          "mujoco": "3.13.0",
+          "numpy": "2.5.3",
+          "openai": "3.11.0",
+          "Pillow": "12.3.0"
+        },
+        "system_prompt_sha256": "559ab6a5a94ddbe5fbe9c48e5103f584a16fc1881d7f15ef7439ee0d262a3d73",
+        "contract_sha256": "fb54ba749228a604698723d3083f141e2e75f96ad6ccec5ad7b83a47ae244066",
+        "task_prompt_sha256": "e6652a7acdc73c1406fbe17a791bb7706354df3d7c31f886a9244c50283b476f",
+        "initial_evidence_sha256": "88742c837c08d7f935bb993dcfec3db40ade0e50a17768c3cb0420a619682d0e",
+        "tool_schema_sha256": "f8cfd85f4cee979b950d72a8a553f772cbe8a63be269f21dbc07462377b7683b",
+        "initial_source_sha256": "d8cd6449d73e61667f35e9adf4b455976123d7bade9f745135485366a9ee08b3",
+        "max_api_requests": 16,
+        "max_seconds": 1800,
+        "max_output_tokens": 16384,
+        "predeclared_criteria": {
+          "goal": "Complete hover and maneuver probes while remaining stable and airborne.",
+          "probes": [
+            "maneuver",
+            "hover"
+          ],
+          "duration_s": 10.0,
+          "physical_goal": "Every verification probe completes and its public safe flag is true.",
+          "prediction_goal": "Every frozen prediction overlaps the full observed probe and has position RMSE at most 0.5 m.",
+          "prediction_rmse_max_m": 0.5,
+          "declared_before_run": true,
+          "scope": "These controlled synthetic probes only."
+        },
+        "tool_caps": {
+          "tool_calls": 40,
+          "run_experiment": 8,
+          "replace_model_source": 5,
+          "restore_model_version": 5,
+          "run_model": 10,
+          "apply_repair": 4,
+          "check_repair": 4,
+          "run_regression_suite": 2,
+          "model_edits": 5
+        },
+        "configuration_caps": {
+          "model_parameters": {
+            "rotor_FL_gain": {
+              "nominal": 1.0,
+              "min": 0.0,
+              "max": 1.5,
+              "component_id": "rotor_FL",
+              "units": "dimensionless"
+            },
+            "rotor_FR_gain": {
+              "nominal": 1.0,
+              "min": 0.0,
+              "max": 1.5,
+              "component_id": "rotor_FR",
+              "units": "dimensionless"
+            },
+            "rotor_RR_gain": {
+              "nominal": 1.0,
+              "min": 0.0,
+              "max": 1.5,
+              "component_id": "rotor_RR",
+              "units": "dimensionless"
+            },
+            "rotor_RL_gain": {
+              "nominal": 1.0,
+              "min": 0.0,
+              "max": 1.5,
+              "component_id": "rotor_RL",
+              "units": "dimensionless"
+            },
+            "voltage_ratio": {
+              "nominal": 1.0,
+              "min": 0.1,
+              "max": 1.0,
+              "component_id": "battery",
+              "units": "dimensionless"
+            },
+            "payload_kg": {
+              "nominal": 0.0,
+              "min": 0.0,
+              "max": 5.0,
+              "component_id": "payload",
+              "units": "kg"
+            },
+            "wind_x_n": {
+              "nominal": 0.0,
+              "min": -20.0,
+              "max": 20.0,
+              "component_id": "environment",
+              "units": "N"
+            },
+            "delay_s": {
+              "nominal": 0.0,
+              "min": 0.0,
+              "max": 1.0,
+              "component_id": "command_link",
+              "units": "s"
+            }
+          },
+          "probe_duration_s": {
+            "min": 2.0,
+            "max": 20.0
+          },
+          "tools": {
+            "inspect_system": {},
+            "observe_system": {},
+            "inspect_model": {},
+            "replace_model_source": {},
+            "restore_model_version": {},
+            "run_experiment": {
+              "probe": {
+                "type": "string",
+                "enum": [
+                  "hover",
+                  "maneuver",
+                  "showcase"
+                ]
+              },
+              "duration_s": {
+                "type": "number",
+                "minimum": 2,
+                "maximum": 20,
+                "description": "Seconds of the diagnostic probe, after a declared fixture reset."
+              }
+            },
+            "observe_run": {},
+            "run_model": {
+              "probe": {
+                "type": "string",
+                "enum": [
+                  "hover",
+                  "maneuver",
+                  "showcase"
+                ]
+              },
+              "duration_s": {
+                "type": "number",
+                "minimum": 2,
+                "maximum": 20,
+                "description": "Seconds of the diagnostic probe, after a declared fixture reset."
+              }
+            },
+            "apply_repair": {},
+            "check_repair": {
+              "probe": {
+                "type": "string",
+                "enum": [
+                  "hover",
+                  "maneuver",
+                  "showcase"
+                ]
+              },
+              "duration_s": {
+                "type": "number",
+                "minimum": 2,
+                "maximum": 20,
+                "description": "Seconds of the diagnostic probe, after a declared fixture reset."
+              }
+            },
+            "run_regression_suite": {},
+            "submit_result": {}
+          }
+        }
+      },
+      "changes": [
+        {
+          "id": "checkpoint_004",
+          "tool": "replace_model_source",
+          "kind": "model_edit",
+          "stage": "applied",
+          "title": "Replace predictive source",
+          "action": "replace_model_source",
+          "target": null,
+          "probe": null,
+          "reason": "The initial and reset-hover trajectories show persistent FL-direction torque and a 22% total lift deficit. Install the minimal effective FL gain estimate 0.12, leaving all other parameters nominal, for independent rollout testing before targeted maintenance.",
+          "expected_effect": null,
+          "timestamp": "2026-09-10T19:39:35.611428+00:00",
+          "changes": [],
+          "result": {
+            "accepted": true,
+            "source_sha256": "3d123ac37a46029b04c92d29be02fd090428cde871d120d4ca2835254b6e2d11",
+            "version_id": "v001",
+            "meaning": "The predictive component changed. No physical repair was performed."
+          },
+          "source_diff": "--- before/model.py\n+++ after/model.py\n@@ -1,7 +1,10 @@\n-\"\"\"Editable nominal platform predictor. Empty parameters retain host defaults.\n+\"\"\"Predict the current pre-maintenance specimen's effective thrust capacity.\n \n-Only public observations and this component's numeric state are available.\n-See the supplied platform capabilities for supported parameter names and units.\n+Equal-command initial specific force is 0.78 of nominal. Together with the\n+negative-roll/positive-pitch transient, this supports FL gain 0.12 when the\n+other three rotors and supply retain nominal values. This is an effective\n+parameter estimate, not an identification of the underlying damage mechanism.\n+Reassess after physical maintenance; no evolving memory is justified here.\n \"\"\"\n \n \n@@ -10,7 +13,7 @@\n \n \n def predict_parameters(state):\n-    return {}\n+    return {\"rotor_FL_gain\": 0.12}\n \n \n def advance_state(state, observation, dt_s):\n"
+        },
+        {
+          "id": "checkpoint_006",
+          "tool": "apply_repair",
+          "kind": "repair",
+          "stage": "applied",
+          "title": "Replace rotor \u00b7 rotor_FL",
+          "action": "replace_rotor",
+          "target": "rotor_FL",
+          "probe": null,
+          "reason": "Persistent directional failure survived a fixture reset, and an independently executed single-parameter FL gain=0.12 model reproduced the measured hover trajectory and summary. Targeted FL replacement is supported; battery, payload, command link, other rotors and environment have no independent evidence warranting intervention.",
+          "expected_effect": "Restore nominal FL thrust capacity. After fixture reset, expect initial specific force 9.81 m/s^2, balanced hover without rapid negative-roll/positive-pitch growth, and maneuver performance matching the healthy control with no ground contact.",
+          "timestamp": "2026-09-10T19:40:03.423475+00:00",
+          "changes": [
+            {
+              "parameter": "rotor_FL_gain",
+              "before": 0.12,
+              "after": 1.0
+            }
+          ],
+          "result": {
+            "receipt": {
+              "id": "maintenance_4fbe06125408",
+              "action": "replace_rotor",
+              "target": "rotor_FL",
+              "status": "applied",
+              "verification_required": true,
+              "message": "The requested intervention was performed. Run a probe to measure its effect."
+            }
+          },
+          "before_parameters": {
+            "rotor_FL_gain": 0.12
+          },
+          "after_parameters": {
+            "rotor_FL_gain": 1.0
+          }
+        },
+        {
+          "id": "checkpoint_008",
+          "tool": "restore_model_version",
+          "kind": "model_edit",
+          "stage": "applied",
+          "title": "Restore predictive source",
+          "action": "restore_model_version",
+          "target": null,
+          "probe": null,
+          "reason": "Reassess parameters after actual FL replacement: check_repair run_0005 matches healthy run_0006 with zero measured position difference, nominal initial lift and no contact. Restore nominal parameters for the current maintained specimen rather than retaining the accurately tested but obsolete pre-repair FL=0.12 estimate. Independent prediction testing follows.",
+          "expected_effect": null,
+          "timestamp": "2026-09-10T19:40:32.139866+00:00",
+          "changes": [],
+          "result": {
+            "accepted": true,
+            "source_sha256": "d8cd6449d73e61667f35e9adf4b455976123d7bade9f745135485366a9ee08b3",
+            "version_id": "v002",
+            "meaning": "The predictive component changed. No physical repair was performed."
+          },
+          "source_diff": "--- before/model.py\n+++ after/model.py\n@@ -1,10 +1,7 @@\n-\"\"\"Predict the current pre-maintenance specimen's effective thrust capacity.\n+\"\"\"Editable nominal platform predictor. Empty parameters retain host defaults.\n \n-Equal-command initial specific force is 0.78 of nominal. Together with the\n-negative-roll/positive-pitch transient, this supports FL gain 0.12 when the\n-other three rotors and supply retain nominal values. This is an effective\n-parameter estimate, not an identification of the underlying damage mechanism.\n-Reassess after physical maintenance; no evolving memory is justified here.\n+Only public observations and this component's numeric state are available.\n+See the supplied platform capabilities for supported parameter names and units.\n \"\"\"\n \n \n@@ -13,7 +10,7 @@\n \n \n def predict_parameters(state):\n-    return {\"rotor_FL_gain\": 0.12}\n+    return {}\n \n \n def advance_state(state, observation, dt_s):\n"
+        }
+      ]
+    },
+    {
+      "label": "sol",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "max",
+      "metrics": {
+        "duration_s": 198.49511679200805,
+        "api_requests": 11,
+        "tool_calls": 11,
+        "failed_tool_calls": 0,
+        "usage": {
+          "input_tokens": 1684630,
+          "output_tokens": 4526,
+          "total_tokens": 1689156,
+          "reasoning_tokens": 2858,
+          "cached_input_tokens": 1308271
+        },
+        "estimated_cost_usd": null,
+        "cost_note": "No billing estimate recorded; token counts are available.",
+        "agent_submitted": true,
+        "stop_reason": "agent_submission",
+        "verification_status": "completed",
+        "aggregate": {
+          "goal_achieved": true,
+          "predictive_success": true,
+          "mean_before_rmse_m": 1.9477444295829431,
+          "mean_after_rmse_m": 0.0,
+          "mean_prediction_rmse_m": 0.0
+        },
+        "goal": {
+          "title": "Complete hover and maneuver probes while remaining stable and airborne.",
+          "criteria": [
+            "Every verification probe completes and its public safe flag is true.",
+            "Every frozen prediction overlaps the full observed probe and has position RMSE at most 0.5 m."
+          ]
+        },
+        "action_summary": {
+          "repair_attempts": 1,
+          "repairs_applied": 1,
+          "model_edit_attempts": 2,
+          "model_edits_applied": 2,
+          "failed_attempts": 0,
+          "fix_attempted": true,
+          "change_applied": true,
+          "status": "goal_achieved"
+        },
+        "cases": [
+          {
+            "probe": "maneuver",
+            "duration_s": 10.0,
+            "before_difference": {
+              "position_rmse_m": 2.0173429173533832,
+              "maximum_position_error_m": 2.434334369052452,
+              "common_duration_s": 10.0,
+              "samples": 200,
+              "observed_outcome": "ground_contact",
+              "observed_within_envelope": false,
+              "reference_outcome": "within_probe_envelope"
+            },
+            "after_difference": {
+              "position_rmse_m": 0.0,
+              "maximum_position_error_m": 0.0,
+              "common_duration_s": 10.0,
+              "samples": 200,
+              "observed_outcome": "within_probe_envelope",
+              "observed_within_envelope": true,
+              "reference_outcome": "within_probe_envelope"
+            },
+            "prediction_difference": {
+              "position_rmse_m": 0.0,
+              "maximum_position_error_m": 0.0,
+              "common_duration_s": 10.0,
+              "samples": 200,
+              "observed_outcome": "within_probe_envelope",
+              "observed_within_envelope": true,
+              "reference_outcome": "within_probe_envelope"
+            }
+          },
+          {
+            "probe": "hover",
+            "duration_s": 10.0,
+            "before_difference": {
+              "position_rmse_m": 1.8781459418125033,
+              "maximum_position_error_m": 1.9555297433493566,
+              "common_duration_s": 10.0,
+              "samples": 200,
+              "observed_outcome": "ground_contact",
+              "observed_within_envelope": false,
+              "reference_outcome": "within_probe_envelope"
+            },
+            "after_difference": {
+              "position_rmse_m": 0.0,
+              "maximum_position_error_m": 0.0,
+              "common_duration_s": 10.0,
+              "samples": 200,
+              "observed_outcome": "within_probe_envelope",
+              "observed_within_envelope": true,
+              "reference_outcome": "within_probe_envelope"
+            },
+            "prediction_difference": {
+              "position_rmse_m": 0.0,
+              "maximum_position_error_m": 0.0,
+              "common_duration_s": 10.0,
+              "samples": 200,
+              "observed_outcome": "within_probe_envelope",
+              "observed_within_envelope": true,
+              "reference_outcome": "within_probe_envelope"
+            }
+          }
+        ]
+      },
+      "protocol_fingerprint": "8386697c95d0495090c7de37e6cfda8fbaab5790fdeefee316d3192b183e6a19",
+      "protocol_manifest": {
+        "schema_version": 2,
+        "platform": "drone",
+        "source_sha256": {
+          "candidate/platform_model.py": "d8cd6449d73e61667f35e9adf4b455976123d7bade9f745135485366a9ee08b3",
+          "component_worker/__init__.py": "650f91147d953331a7074e147abf0dd0c5383531aa69a6dc5a6a205a84b5f568",
+          "component_worker/client.py": "e31745c1fcd0838ee7bfaa4d0797ab53bb7fad151c69a4170126e21ea484769d",
+          "component_worker/platform_client.py": "dbdc62d5bc0ed30eded66c95ee9ebea7a30d912dd51be90c9a86a038fa2f9d8f",
+          "component_worker/platform_runtime.py": "497bdca1bb3e90d18ee8393840af5861d32b814d9fbcb54b300457655939b8af",
+          "component_worker/runtime.py": "b6bda5edf822d272315eeb5b2a72e35e00c87597ce0fdbfe275187876590882e",
+          "contracts/PLATFORM_MODEL.md": "fb54ba749228a604698723d3083f141e2e75f96ad6ccec5ad7b83a47ae244066",
+          "investigation/api.py": "efd713bbd7973f39588e840bbeadf65d8f07e0b99153f4c2d64ce0af12ce187e",
+          "investigation/platform_broker.py": "0bb776c0b3a18c0a4139f0a3a14b607f0eb937a64e91a987e33d85ce982a15a9",
+          "investigation/platform_physics.py": "2c23a76c4de8dc9ab599b889c7a138f8932b12a1543aa60a2207bcf531af096f",
+          "investigation/platform_run.py": "d9647e5e6edd323509de081cb01743a1bc90d3fce03ed98d80a8141bef164c17",
+          "investigation/platform_story.py": "7c268fd69a55bab5522567c5800c26e94ab45e0900a74fee62f45dde96cb94d9",
+          "investigation/prompts/platform_system.md": "559ab6a5a94ddbe5fbe9c48e5103f584a16fc1881d7f15ef7439ee0d262a3d73",
+          "investigation/runner.py": "ebe440a5df19b993ddad58e081b69e635a7fad6c1b82b1ee0858f7e6770e1ea6",
+          "simulator/assets/platforms/car_damage.xml": "db5f17adc69c40c610419785ab38488aad9c4bbe0b919858b53b6f9ecfc9cb08",
+          "simulator/assets/platforms/drone.xml": "abc4d8f7aef7b360f8df8ff10cf9011dadad3b2eb5ca3d5cfd386b516216ce46",
+          "simulator/assets/platforms/quadruped.xml": "a2812fb9eee63d76807ce80a6062c316676fa0ee38ec90f2fe39f80def470e3b",
+          "simulator/platforms/__init__.py": "dd46d47c98c4af4f4eaa139a6ab1c53745fb4e64f7a8b585a1b818516bc9541c",
+          "simulator/platforms/car_damage.py": "a22cfb2fc46dade4bcdbd641fa3ec70b5198890f0d1cbec18a345ad822092d9e",
+          "simulator/platforms/drone.py": "b36db82938d0666330777598ac8ba1d73554f6791aeb020925f14a3fbac80895",
+          "simulator/platforms/quadruped.py": "0c222168bdd4de6ac8872215ad9ff276f1f46686548d75e9761194a734d2c554"
+        },
+        "runtime_versions": {
+          "python": "3.13.7",
+          "mujoco": "3.13.0",
+          "numpy": "2.5.3",
+          "openai": "3.11.0",
+          "Pillow": "12.3.0"
+        },
+        "system_prompt_sha256": "559ab6a5a94ddbe5fbe9c48e5103f584a16fc1881d7f15ef7439ee0d262a3d73",
+        "contract_sha256": "fb54ba749228a604698723d3083f141e2e75f96ad6ccec5ad7b83a47ae244066",
+        "task_prompt_sha256": "e6652a7acdc73c1406fbe17a791bb7706354df3d7c31f886a9244c50283b476f",
+        "initial_evidence_sha256": "88742c837c08d7f935bb993dcfec3db40ade0e50a17768c3cb0420a619682d0e",
+        "tool_schema_sha256": "f8cfd85f4cee979b950d72a8a553f772cbe8a63be269f21dbc07462377b7683b",
+        "initial_source_sha256": "d8cd6449d73e61667f35e9adf4b455976123d7bade9f745135485366a9ee08b3",
+        "max_api_requests": 16,
+        "max_seconds": 1800,
+        "max_output_tokens": 16384,
+        "predeclared_criteria": {
+          "goal": "Complete hover and maneuver probes while remaining stable and airborne.",
+          "probes": [
+            "maneuver",
+            "hover"
+          ],
+          "duration_s": 10.0,
+          "physical_goal": "Every verification probe completes and its public safe flag is true.",
+          "prediction_goal": "Every frozen prediction overlaps the full observed probe and has position RMSE at most 0.5 m.",
+          "prediction_rmse_max_m": 0.5,
+          "declared_before_run": true,
+          "scope": "These controlled synthetic probes only."
+        },
+        "tool_caps": {
+          "tool_calls": 40,
+          "run_experiment": 8,
+          "replace_model_source": 5,
+          "restore_model_version": 5,
+          "run_model": 10,
+          "apply_repair": 4,
+          "check_repair": 4,
+          "run_regression_suite": 2,
+          "model_edits": 5
+        },
+        "configuration_caps": {
+          "model_parameters": {
+            "rotor_FL_gain": {
+              "nominal": 1.0,
+              "min": 0.0,
+              "max": 1.5,
+              "component_id": "rotor_FL",
+              "units": "dimensionless"
+            },
+            "rotor_FR_gain": {
+              "nominal": 1.0,
+              "min": 0.0,
+              "max": 1.5,
+              "component_id": "rotor_FR",
+              "units": "dimensionless"
+            },
+            "rotor_RR_gain": {
+              "nominal": 1.0,
+              "min": 0.0,
+              "max": 1.5,
+              "component_id": "rotor_RR",
+              "units": "dimensionless"
+            },
+            "rotor_RL_gain": {
+              "nominal": 1.0,
+              "min": 0.0,
+              "max": 1.5,
+              "component_id": "rotor_RL",
+              "units": "dimensionless"
+            },
+            "voltage_ratio": {
+              "nominal": 1.0,
+              "min": 0.1,
+              "max": 1.0,
+              "component_id": "battery",
+              "units": "dimensionless"
+            },
+            "payload_kg": {
+              "nominal": 0.0,
+              "min": 0.0,
+              "max": 5.0,
+              "component_id": "payload",
+              "units": "kg"
+            },
+            "wind_x_n": {
+              "nominal": 0.0,
+              "min": -20.0,
+              "max": 20.0,
+              "component_id": "environment",
+              "units": "N"
+            },
+            "delay_s": {
+              "nominal": 0.0,
+              "min": 0.0,
+              "max": 1.0,
+              "component_id": "command_link",
+              "units": "s"
+            }
+          },
+          "probe_duration_s": {
+            "min": 2.0,
+            "max": 20.0
+          },
+          "tools": {
+            "inspect_system": {},
+            "observe_system": {},
+            "inspect_model": {},
+            "replace_model_source": {},
+            "restore_model_version": {},
+            "run_experiment": {
+              "probe": {
+                "type": "string",
+                "enum": [
+                  "hover",
+                  "maneuver",
+                  "showcase"
+                ]
+              },
+              "duration_s": {
+                "type": "number",
+                "minimum": 2,
+                "maximum": 20,
+                "description": "Seconds of the diagnostic probe, after a declared fixture reset."
+              }
+            },
+            "observe_run": {},
+            "run_model": {
+              "probe": {
+                "type": "string",
+                "enum": [
+                  "hover",
+                  "maneuver",
+                  "showcase"
+                ]
+              },
+              "duration_s": {
+                "type": "number",
+                "minimum": 2,
+                "maximum": 20,
+                "description": "Seconds of the diagnostic probe, after a declared fixture reset."
+              }
+            },
+            "apply_repair": {},
+            "check_repair": {
+              "probe": {
+                "type": "string",
+                "enum": [
+                  "hover",
+                  "maneuver",
+                  "showcase"
+                ]
+              },
+              "duration_s": {
+                "type": "number",
+                "minimum": 2,
+                "maximum": 20,
+                "description": "Seconds of the diagnostic probe, after a declared fixture reset."
+              }
+            },
+            "run_regression_suite": {},
+            "submit_result": {}
+          }
+        }
+      },
+      "changes": [
+        {
+          "id": "checkpoint_004",
+          "tool": "replace_model_source",
+          "kind": "model_edit",
+          "stage": "applied",
+          "title": "Replace predictive source",
+          "action": "replace_model_source",
+          "target": null,
+          "probe": null,
+          "reason": "The 2 s hover exactly reproduced the original trajectory: initial z specific force 7.6518 m/s^2 under four equal commands, angular velocity (-0.55842,+0.558589,-0.022287) by 0.02 s, and contact by 0.74 s. The 0.78 total-lift ratio implies summed rotor gain 3.12; the diagonal torque and controller response localize the missing 0.88 gain to FL. This predictive edit represents the damaged specimen only; it is not maintenance.",
+          "expected_effect": null,
+          "timestamp": "2026-09-10T19:39:39.697946+00:00",
+          "changes": [],
+          "result": {
+            "accepted": true,
+            "source_sha256": "6e05e05c8a196b8df7a956720890c03eaf941e9ffb9674d7e953c3715f703f11",
+            "version_id": "v001",
+            "meaning": "The predictive component changed. No physical repair was performed."
+          },
+          "source_diff": "--- before/model.py\n+++ after/model.py\n@@ -1,8 +1,4 @@\n-\"\"\"Editable nominal platform predictor. Empty parameters retain host defaults.\n-\n-Only public observations and this component's numeric state are available.\n-See the supplied platform capabilities for supported parameter names and units.\n-\"\"\"\n+\"\"\"Predict the currently damaged drone from public diagnostic evidence.\"\"\"\n \n \n def init_state():\n@@ -10,7 +6,11 @@\n \n \n def predict_parameters(state):\n-    return {}\n+    # Hover starts with equal commands.  Measured body-z specific force was\n+    # 7.6518 / 9.81 = 0.78 of nominal, so total rotor gain is 3.12.\n+    # The immediate (-roll, +pitch) torque identifies the FL corner;\n+    # with the other three rotors nominal this gives FL gain 0.12.\n+    return {\"rotor_FL_gain\": 0.12}\n \n \n def advance_state(state, observation, dt_s):\n"
+        },
+        {
+          "id": "checkpoint_006",
+          "tool": "apply_repair",
+          "kind": "repair",
+          "stage": "applied",
+          "title": "Replace rotor \u00b7 rotor_FL",
+          "action": "replace_rotor",
+          "target": "rotor_FL",
+          "probe": null,
+          "reason": "The repeated physical hover and the installed one-parameter model match sample-for-sample: z specific force 7.6518 m/s^2, signed angular rates, contact at 0.74 s, and final pose. This supports a static FL thrust gain of 0.12 rather than battery/payload/delay/wind. Replace only the localized FL rotor; no other component change is justified.",
+          "expected_effect": "Restore FL gain from approximately 0.12 to nominal 1.0, giving 9.81 m/s^2 initial specific force under equal hover commands, near-zero initial roll/pitch rates, no contact, and nominal altitude/attitude tracking.",
+          "timestamp": "2026-09-10T19:39:54.604083+00:00",
+          "changes": [
+            {
+              "parameter": "rotor_FL_gain",
+              "before": 0.12,
+              "after": 1.0
+            }
+          ],
+          "result": {
+            "receipt": {
+              "id": "maintenance_f0b67a62e5c1",
+              "action": "replace_rotor",
+              "target": "rotor_FL",
+              "status": "applied",
+              "verification_required": true,
+              "message": "The requested intervention was performed. Run a probe to measure its effect."
+            }
+          },
+          "before_parameters": {
+            "rotor_FL_gain": 0.12
+          },
+          "after_parameters": {
+            "rotor_FL_gain": 1.0
+          }
+        },
+        {
+          "id": "checkpoint_008",
+          "tool": "restore_model_version",
+          "kind": "model_edit",
+          "stage": "applied",
+          "title": "Restore predictive source",
+          "action": "restore_model_version",
+          "target": null,
+          "probe": null,
+          "reason": "The 4 s post-maintenance hover is exactly identical to its healthy control (position RMSE and maximum position error both 0.0, no contact, 9.81 m/s^2 specific force). The prior FL=0.12 model correctly described only the damaged specimen; after physical replacement, restore nominal parameters so the executable model represents the current repaired specimen.",
+          "expected_effect": null,
+          "timestamp": "2026-09-10T19:40:07.531048+00:00",
+          "changes": [],
+          "result": {
+            "accepted": true,
+            "source_sha256": "d8cd6449d73e61667f35e9adf4b455976123d7bade9f745135485366a9ee08b3",
+            "version_id": "v002",
+            "meaning": "The predictive component changed. No physical repair was performed."
+          },
+          "source_diff": "--- before/model.py\n+++ after/model.py\n@@ -1,4 +1,8 @@\n-\"\"\"Predict the currently damaged drone from public diagnostic evidence.\"\"\"\n+\"\"\"Editable nominal platform predictor. Empty parameters retain host defaults.\n+\n+Only public observations and this component's numeric state are available.\n+See the supplied platform capabilities for supported parameter names and units.\n+\"\"\"\n \n \n def init_state():\n@@ -6,11 +10,7 @@\n \n \n def predict_parameters(state):\n-    # Hover starts with equal commands.  Measured body-z specific force was\n-    # 7.6518 / 9.81 = 0.78 of nominal, so total rotor gain is 3.12.\n-    # The immediate (-roll, +pitch) torque identifies the FL corner;\n-    # with the other three rotors nominal this gives FL gain 0.12.\n-    return {\"rotor_FL_gain\": 0.12}\n+    return {}\n \n \n def advance_state(state, observation, dt_s):\n"
+        }
+      ]
+    }
+  ]
+}

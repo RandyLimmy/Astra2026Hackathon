@@ -14,8 +14,9 @@ The dashboard and braking investigation already use the teammate's four-wheel
 car with the editable Python component.
 
 Three additional simulator platforms are available: **post-crash car damage**,
-**quadruped body faults**, and **quadrotor degradation**. They include sixteen
-presets, controlled probes, recordings and nominal-before-reality comparisons.
+**quadruped body faults**, and **quadrotor degradation**. They include nineteen
+presets, including each platform's demo, controlled probes, recordings and
+nominal-before-reality comparisons.
 See [the platform guide](simulator/PLATFORMS.md) for launch commands and measured
 behavior. Start the robot-dog demo with
 `.venv/bin/mjpython -m simulator view quadruped_demo`.
@@ -43,20 +44,29 @@ establish that a repair succeeded.
 
 ## Astra tooling for car, drone and robot dog
 
-The new [tooling guide](docs/ASTRA_TOOLING.md) covers public inspection, diagnostic
-experiments, isolated Python model editing, targeted component maintenance and
-fresh-specimen verification. This workflow is pinned to **Astra / extra high** and
-uses the existing key. Frontend changes and further Sol work are deferred.
+The new [tooling guide](docs/ASTRA_TOOLING.md) covers all **19 presets** for the
+teammate's new car, drone and robot dog, including their demos. It documents public
+inspection, diagnostic experiments, isolated Python model editing, targeted
+component maintenance and fresh-specimen verification. **Astra and Sol run in
+parallel**, each with a separate conversation, simulation and editable source.
+Both use the highest documented API effort, **`max`**. This implements the
+requested highest-effort comparison; `ultra` is not a documented API value.
 
 ```sh
-.venv/bin/python -m investigation.platform_run --platform car --output runs/tooling/car-001 --no-frames
+# List supported presets without starting a simulation or API investigation.
+.venv/bin/python -m investigation.platform_run --list-scenarios
+
+# Start a matched pair with recorded frames.
+.venv/bin/python -m investigation.platform_pair --platform drone --scenario drone_rotor_loss --output runs/drone-pair-001
 ```
 
 Use `--platform drone` or `--platform quadruped` with a new output directory for
-the other machines. A repair receipt is followed by measured checks; model edits
-and physical maintenance are recorded separately. Full-source replacement with
-a current hash avoids the unified-diff formatting issue observed in the first
-comparison. The original brake-fade workflow remains available below.
+the other machines. `--scenario PRESET` selects a listed preset belonging to that
+platform, such as `car_demo`, `drone_demo`, or `quadruped_demo`; omitting it selects
+the platform's default incident. A repair receipt is followed by measured checks;
+model edits and physical maintenance are recorded separately. Full-source
+replacement with a current hash avoids the unified-diff formatting issue observed
+in the first comparison. The original brake-fade workflow remains available below.
 
 ## Open the dashboard
 
@@ -72,22 +82,23 @@ cd ..
 ```
 
 Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)** (`localhost:8765` also works).
-The dashboard shows saved runs and live LLM activity, experiment results, editable
-component source changes, and the exact prompts. Completed runs can replay the
-original, candidate and reference cars with synchronized telemetry and recorded
-MuJoCo frames. Frames are rendered from saved commands and frozen source; they
-are published only after their outcome matches the recorded evaluation.
+The dashboard follows the original scenario, two model checkpoint tracks, and
+the final Original/Astra/Sol replay. Each checkpoint separates the stated reason,
+attempted action, accepted changes and measured outcome. Physical changes show
+exact before/after parameters; Python changes show source diffs. Playback uses
+actual recorded frames and a shared simulation clock.
 
-Select **Astra / extra high** or **Sol / high**, then click **Start run**. This starts a fresh
-API investigation with the configured key, a limit of **12 API requests** and a
-**1,800-second investigation budget**. The dashboard launches one investigation
-at a time. Results appear when evaluation finishes; frame generation runs in the
-background afterward, and the replay becomes available as frames are ready.
+Choose **New car**, **Drone**, or **Robot dog**, select a preset, then click
+**Run Astra + Sol**. This starts two concurrent API investigations with the
+configured key, each with **16 API requests** and a **1,800-second investigation
+budget**. One comparison runs at a time. Both models receive matching public
+evidence, tools and budgets. Final outcomes come from fresh controlled probes;
+an applied action or completed process alone is not a successful repair.
 Opening an existing run does not start another API investigation. Full local run
 records and replay frames live under ignored `runs/`; the compact comparison and
 frozen components below are shared in Git.
 
-For completed runs launched from the terminal, generate replay media separately;
+For older braking runs launched from the terminal, generate replay media separately;
 replace `COMPLETED_RUN_ID` with the directory name under `runs/`:
 
 ```sh
@@ -123,9 +134,9 @@ the API investigations below.
 
 ## Run an investigation from the terminal
 
-The default profile is **`astra-xhigh`**, which uses **`gpt-6-astra` with `xhigh`
-reasoning** through the OpenAI Responses API. Select **`--profile sol-high`** to
-use **`gpt-5.6-sol` with `high` reasoning**. Both use the same `OPENAI_API_KEY`, which
+The default profile is **`astra-max`**, which uses **`gpt-6-astra` with `max`
+reasoning** through the OpenAI Responses API. Select **`--profile sol-max`** to
+use **`gpt-5.6-sol` with `max` reasoning**. Both use the same `OPENAI_API_KEY`, which
 must have access to the selected model. Configure
 the key in the existing ignored `.env` or the host environment; see
 [.env.example](.env.example) for placeholders. The model and effort are pinned by
@@ -134,9 +145,9 @@ the selected profile; optional environment settings must match it:
 ```dotenv
 OPENAI_API_KEY=your-project-key
 ASTRA_MODEL=gpt-6-astra
-ASTRA_REASONING_EFFORT=xhigh
+ASTRA_REASONING_EFFORT=max
 SOL_MODEL=gpt-5.6-sol
-SOL_REASONING_EFFORT=high
+SOL_REASONING_EFFORT=max
 ```
 
 The investigation loads `.env` itself. Values in the selected file take precedence
@@ -147,21 +158,22 @@ and are not supplied to the candidate worker. Simulator-only commands do not
 load `.env` or make API requests.
 
 ```sh
-# Make one small request with the default Astra/extra-high profile.
+# Make one small request with the default Astra/max profile.
 .venv/bin/python -m investigation --check-key
 
-# Run a fresh Astra/extra-high investigation in a unique directory under runs/.
+# Run a fresh Astra/max investigation in a unique directory under runs/.
 .venv/bin/python -m investigation
 
-# Run a fresh Sol/high investigation with the same configured API key.
-.venv/bin/python -m investigation --profile sol-high
+# Run a fresh Sol/max investigation with the same configured API key.
+.venv/bin/python -m investigation --profile sol-max
 
 # Explicit request/time limits and a new output directory.
 .venv/bin/python -m investigation --max-api-requests 12 --max-seconds 1800 --output runs/astra-pilot-001
 ```
 
 The installed console entry point is `realitypatch-astra`; it also accepts
-`--profile sol-high`. Defaults are 12 API
+`--profile sol-max`. The legacy `astra-xhigh` and `sol-high` profiles remain
+available with matching environment settings. Defaults for this older braking loop are 12 API
 requests, a 1,800-second investigation budget, and at most 8,192 output tokens per
 request. Each API request has a 180-second timeout and no automatic retry or model
 fallback. Limits are checked between requests/tools; in-flight work and the final

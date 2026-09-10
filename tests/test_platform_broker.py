@@ -162,8 +162,28 @@ def test_freeze_closes_tools_and_verification_replays_actions_on_fresh_specimen(
     assert len(final["cases"]) == 2
     assert all(case["before_difference"]["position_rmse_m"] == 1 for case in final["cases"])
     assert all(case["after_difference"]["position_rmse_m"] == 0 for case in final["cases"])
+    assert final["aggregate"]["goal_achieved"] is True
+    assert final["aggregate"]["predictive_success"] is True
+    saved_story = json.loads((broker.workdir.parent / "story.json").read_text())
+    assert saved_story["verification"]["goal_achieved"] is True
+    assert saved_story["action_summary"]["repairs_applied"] == 1
     assert (broker.workdir / "submission/predictions_locked.json").is_file()
     assert broker.finalize("repeat") is final
+
+
+def test_final_goal_requires_complete_recording_even_when_safe_flag_is_true(broker, monkeypatch):
+    import investigation.platform_physics as module
+
+    class EarlyStop(FakePhysics):
+        def run_experiment(self, probe, duration_s):
+            return self.record("observed", probe, duration_s / 2, offset=0)
+
+    monkeypatch.setattr(module, "PlatformPhysics", EarlyStop)
+    final = broker.finalize("request_budget")
+    assert all(case["after"]["summary"]["safe"] for case in final["cases"])
+    assert final["aggregate"]["goal_achieved"] is False
+    assert final["aggregate"]["predictive_success"] is False
+    assert broker.action_summary()["fix_attempted"] is False
 
 
 def test_metrics_compare_overlap_without_extrapolation():

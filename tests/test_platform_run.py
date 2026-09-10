@@ -39,7 +39,7 @@ class Client:
         return reply
 
 
-def response(output, *, status="completed", model="gpt-6-astra", effort="xhigh"):
+def response(output, *, status="completed", model="gpt-6-astra", effort="max"):
     return SimpleNamespace(id="response_test", model=model, reasoning=SimpleNamespace(effort=effort),
                            status=status, output=output, usage=None)
 
@@ -118,14 +118,14 @@ def test_pinned_fresh_context_exact_prompts_and_encrypted_continuity(tmp_path):
     metadata = platform_run.run_platform_session(client, broker, tmp_path, platform="drone", max_api_requests=2)
     assert broker.initial_calls == 1
     assert metadata["kind"] == "platform_investigation"
-    assert metadata["profile"] == "astra-xhigh"
+    assert metadata["profile"] == "astra-max"
     assert metadata["platform"] == "drone"
     assert metadata["status"] == "completed"
     assert metadata["agent_submitted"] is True
     assert broker.finalizations == ["agent_submission"]
     for request in client.requests:
         assert request["model"] == "gpt-6-astra"
-        assert request["reasoning"] == {"effort": "xhigh", "summary": "auto"}
+        assert request["reasoning"] == {"effort": "max", "summary": "auto"}
         assert request["store"] is False
         assert request["parallel_tool_calls"] is False
         assert request["tools"] == broker.tool_schemas
@@ -300,10 +300,10 @@ def test_cli_constructs_host_preset_without_feeding_it_to_session(tmp_path, monk
     monkeypatch.setitem(sys.modules, "investigation.platform_broker", SimpleNamespace(PlatformBroker=CLI_Broker))
     assert platform_run.main(["--platform", "drone", "--scenario", "PRIVATE_PRESET_SENTINEL",
                               "--output", str(output), "--no-frames"]) == 0
-    assert seen["settings"] == {"profile": "astra-xhigh"}
+    assert seen["settings"] == {"profile": "astra-max"}
     assert seen["physics"] == ("drone", output / "physics", {"scenario": "PRIVATE_PRESET_SENTINEL", "record_frames": False})
     assert seen["broker"][0] == output / "broker"
-    assert seen["session"] == (output, {"platform": "drone", "max_api_requests": 16, "max_seconds": 1800})
+    assert seen["session"] == (output, {"platform": "drone", "max_api_requests": 16, "max_seconds": 1800, "profile": "astra-max", "comparison_id": None})
 
 
 @pytest.mark.parametrize("request_count", [0, 21])
@@ -315,3 +315,23 @@ def test_cli_rejects_out_of_range_budgets_before_loading_credentials(tmp_path, m
         platform_run.main(["--platform", "car", "--output", str(tmp_path / "new"),
                            "--max-api-requests", str(request_count)])
     assert error.value.code == 1
+
+
+def test_max_profiles_share_exact_task_tools_and_initial_conditions(tmp_path):
+    records = []
+    for label, model in (("astra", "gpt-6-astra"), ("sol", "gpt-5.6-sol")):
+        directory = tmp_path / label
+        broker = Broker(directory)
+        client = Client([response([call("submit_result", SUBMISSION)], model=model)])
+        metadata = platform_run.run_platform_session(client, broker, directory, platform="drone",
+                            profile=label + "-max", comparison_id="paired-test", max_api_requests=1)
+        assert metadata["status"] == "completed"
+        assert metadata["model_effort_confirmed"] is True
+        assert metadata["comparison_id"] == "paired-test"
+        assert client.requests[0]["model"] == model
+        assert client.requests[0]["reasoning"]["effort"] == "max"
+        assert client.requests[0]["max_output_tokens"] == 16384
+        records.append((metadata, client.requests[0]))
+    assert records[0][0]["protocol_fingerprint"] == records[1][0]["protocol_fingerprint"]
+    assert records[0][1]["input"] == records[1][1]["input"]
+    assert records[0][1]["tools"] == records[1][1]["tools"]

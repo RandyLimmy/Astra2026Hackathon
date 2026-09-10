@@ -26,14 +26,19 @@ DEFAULTS = {"car": "car_wheel_misalignment", "drone": "drone_rotor_loss",
             "quadruped": "quadruped_joint_weakness"}
 SCENARIOS = {
     "car": ("car_postcrash_healthy", "car_steering_damage", "car_wheel_misalignment",
-            "car_suspension_damage", "car_tire_pressure"),
-    "drone": ("drone_hover", "drone_rotor_loss", "drone_voltage_sag", "drone_payload", "drone_wind", "drone_delay"),
+            "car_suspension_damage", "car_tire_pressure", "car_demo"),
+    "drone": ("drone_hover", "drone_rotor_loss", "drone_voltage_sag", "drone_payload",
+              "drone_wind", "drone_delay", "drone_demo"),
     "quadruped": ("quadruped_walk", "quadruped_joint_weakness", "quadruped_foot_slip",
-                  "quadruped_leg_damage", "quadruped_payload_shift"),
+                  "quadruped_leg_damage", "quadruped_payload_shift", "quadruped_demo"),
 }
-PROBES = {"car": ("steering", "braking", "slalom", "bump"), "drone": ("hover", "maneuver"),
+PROBES = {"car": ("steering", "braking", "slalom", "bump"), "drone": ("hover", "maneuver", "showcase"),
           "quadruped": ("walk", "stand", "turn", "conservative", "passive")}
 DEFAULT_PROBES = {"car": "slalom", "drone": "maneuver", "quadruped": "walk"}
+# Operator commands shared with the healthy and predictive fixtures. These are
+# public operating conditions, never fault severity, timing, or latent state.
+FIXTURE_FIELDS = {"car": ("probe_speed",), "drone": ("flight_distance", "flight_altitude"),
+                  "quadruped": ("speed", "gait_period")}
 
 
 def _number(value, low, high, label):
@@ -90,9 +95,19 @@ class PlatformPhysics:
         self.default_probe = DEFAULT_PROBES[platform]
         self._module = MODULES[platform]
         settings = dict(self._module.PRESETS[self.scenario])
-        settings.update(duration=12.0, timestep=0.002,
-                        probe="bump" if platform == "car" else self.default_probe)
-        self._actual = self._module.Simulation(self._module.Config(**settings))
+        # Preserve the selected incident's route and duration, including demos.
+        # Subsequent diagnostic probes use a common, explicitly declared fixture.
+        settings.setdefault("duration", 12.0)
+        settings.setdefault("probe", "bump" if platform == "car" else self.default_probe)
+        settings["timestep"] = 0.002
+        self.default_probe = settings["probe"]
+        if self.scenario.endswith("_demo"):
+            self.default_duration_s = float(settings["duration"])
+        config = self._module.Config(**settings)
+        self._fixture = {name: getattr(config, name) for name in FIXTURE_FIELDS[platform]}
+        self._actual = self._module.Simulation(config)
+        self._incident_config = config
+        self._incident_record = None
         self._nominal = self._new_nominal()
         self._incident_ready = False
         self._initial = None
@@ -103,11 +118,12 @@ class PlatformPhysics:
         self._build_catalog()
 
     def _new_nominal(self):
-        # Do not derive this Config from the damaged Config, including severity,
-        # affected component, onset, or any actual dynamic state.
+        # Share only the declared public controls. Fault severity, affected
+        # component, onset and actual dynamic state never shape the prediction.
         return self._module.Simulation(self._module.Config(
             fault="healthy", duration=12.0, timestep=0.002,
-            probe="bump" if self.platform == "car" else self.default_probe))
+            probe="bump" if self.platform == "car" else self.default_probe,
+            **self._fixture))
 
     def _spec(self, key, nominal, low, high, component, units=None):
         if units is None:
@@ -191,6 +207,7 @@ class PlatformPhysics:
                          "sensor_order": ordering[self.platform],
                          "measurement_units": "Seconds, meters, meters/second, radians, radians/second, m/s^2; explicitly named degree sensors use degrees. Quaternions are w,x,y,z.",
                          "default_probe": self.default_probe, "default_duration_s": self.default_duration_s,
+                         "fixture_controls": self._fixture,
                          "duration_s": {"min": 2.0, "max": 20.0},
                          "specimen_policy": "Each probe explicitly repositions motion and controller state; completed damage and maintenance persist.",
                          "model_policy": "Models start independently from the nominal fixture. Partial parameter maps default unspecified values to nominal; updates use only the model's own sensors.",
@@ -307,7 +324,7 @@ class PlatformPhysics:
         result["phase_time"] = result["t_s"]
         return result
 
-    def _record(self, sim, probe, duration_s, kind, parameter_model=None, parameters=None):
+    def _record(self, sim, probe, duration_s, kind, parameter_model=None, parameters=None, *, reset=True):
         duration_s = self._validate_probe(probe, duration_s)
         # Initial hypothesized parameters shape the declared preparation itself.
         # A stateful model gets a dt=0 initial sensor query, then elapsed feedback.
@@ -316,7 +333,8 @@ class PlatformPhysics:
             initial_parameters = self._parameters(parameter_model(self._observation(sim, sim.elapsed), 0.0))
         if initial_parameters is not None:
             self._apply_parameters(sim, initial_parameters)
-        self._configure_probe(sim, probe, duration_s)
+        if reset:
+            self._configure_probe(sim, probe, duration_s)
         origin = sim.elapsed
         identifier = "run_" + uuid4().hex[:16]
         directory = self.workdir / identifier
@@ -375,7 +393,8 @@ class PlatformPhysics:
             record = {"id": identifier, "platform": self.platform, "kind": kind, "probe": probe,
                       "duration_s": duration_s, "summary": summary, "observations": _sample(observations),
                       "frames": frames, "maintenance": deepcopy(self._receipts) if kind == "observed" else [],
-                      "fixture": "Declared reposition and nominal controller preparation; persistent physical component properties retained."}
+                      "fixture": ("Declared reposition and nominal controller preparation; persistent physical component properties retained."
+                                  if reset else "Original incident from its initial state, including fault onset and any declared recovery reposition.")}
             if kind == "model":
                 record["model_parameters"] = last_parameters
                 record["parameter_updates"] = "own-sensor callback at 50 Hz" if parameter_model else "fixed parameter hypothesis"
@@ -392,6 +411,54 @@ class PlatformPhysics:
             observed = self.run_experiment(self.default_probe, self.default_duration_s)
             self._initial = {"healthy": healthy, "observed": observed}
         return deepcopy(self._initial)
+
+    def record_incident(self):
+        """Host-only original scene; never consumes or resets the agent specimen."""
+        if self._incident_record is None:
+            config = self._incident_config
+            sim = self._module.Simulation(config)
+            self._incident_record = self._record(sim, config.probe, config.duration,
+                                                "incident", reset=False)
+        return deepcopy(self._incident_record)
+
+    def component_parameters(self, target):
+        """Host-only measured implementation changes for the UI, not model input."""
+        sim, model = self._actual, self._actual.model
+        values, extra = {}, {}
+        if self.platform == "car":
+            values.update(steering_gain=sim._rack_gain, steering_bias_rad=sim._rack_bias)
+            for wheel in WHEELS:
+                body = model.body(f"toe_{wheel}")
+                joint = model.joint(f"suspension_{wheel}").id
+                tire, base = model.geom(f"tire_{wheel}"), self._nominal.model.geom(f"tire_{wheel}")
+                values.update({f"toe_{wheel}_rad": 2 * math.atan2(body.quat[3], body.quat[0]),
+                               f"spring_{wheel}_scale": model.jnt_stiffness[joint] / self._nominal.model.jnt_stiffness[joint],
+                               f"tire_{wheel}_radius_scale": tire.size[0] / base.size[0],
+                               f"tire_{wheel}_friction": tire.friction[0],
+                               f"tire_{wheel}_contact_s": tire.solref[0]})
+                if target == f"wheel_{wheel}":
+                    extra[f"suspension_{wheel}_damping_ns_per_m"] = model.dof_damping[model.jnt_dofadr[joint]]
+        elif self.platform == "drone":
+            values.update({f"rotor_{rotor}_gain": sim.effectiveness[i] for i, rotor in enumerate(ROTORS)})
+            values.update(voltage_ratio=sim.voltage, payload_kg=model.body_mass[sim.focus_body] - drone.NOMINAL_MASS,
+                          wind_x_n=sim.wind[0], delay_s=sim.delay)
+            if target == "payload":
+                extra.update({f"body_inertia_{axis}_kg_m2": model.body_inertia[sim.focus_body, index]
+                              for index, axis in enumerate("xyz")})
+        else:
+            for i, joint in enumerate(quadruped.JOINTS):
+                ident = model.joint(joint).id
+                values.update({f"motor_{joint}_gain": model.actuator_gainprm[i, 0],
+                               f"joint_{joint}_stiffness": model.jnt_stiffness[ident],
+                               f"joint_{joint}_rest_rad": model.qpos_spring[model.jnt_qposadr[ident]]})
+            values.update({f"foot_{leg}_friction": model.geom(f"{leg}_foot").friction[0] for leg in WHEELS})
+            values["payload_offset_m"] = model.qpos_spring[sim._payload_qa]
+        selected = {key: float(value) for key, value in values.items()
+                    if self._specs[key]["component_id"] == target}
+        selected.update({key: float(value) for key, value in extra.items()})
+        if not all(math.isfinite(value) for value in selected.values()):
+            raise ValueError("An intervention parameter was non-finite.")
+        return selected
 
     def observe(self, component_id=None):
         selected = [item for item in self._components if component_id is None or item["id"] == component_id]
@@ -429,6 +496,7 @@ class PlatformPhysics:
         self._prepare_actual()
         sim, nominal = self._actual, self._nominal.model
         model = sim.model
+        before = self.component_parameters(target)
         if self.platform == "car":
             if action == "calibrate_steering":
                 sim._rack_gain, sim._rack_bias = 1.0, 0.0
@@ -471,6 +539,7 @@ class PlatformPhysics:
             elif action == "secure_payload":
                 model.qpos_spring[sim._payload_qa] = nominal.qpos_spring[sim._payload_qa]
         self._constants(sim)
+        self._last_maintenance_change = {"before": before, "after": self.component_parameters(target)}
         receipt = {"id": "maintenance_" + uuid4().hex[:12], "action": action, "target": target,
                    "status": "applied", "verification_required": True,
                    "message": "The requested intervention was performed. Run a probe to measure its effect."}

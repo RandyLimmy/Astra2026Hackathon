@@ -1,4 +1,4 @@
-"""Run the car, drone or quadruped tool workflow with pinned Astra/extra high."""
+"""Run the car, drone or quadruped tool workflow with an explicitly pinned model."""
 
 from __future__ import annotations
 
@@ -7,22 +7,25 @@ import hashlib
 from importlib.metadata import version
 import json
 import math
+import os
 from pathlib import Path
 import sys
 import time
 
 from openai import APIError
 
-from .api import Settings, get_profile, request_response
+from .api import DEFAULT_PROFILE, PROFILES, Settings, get_profile, request_response
 from .runner import EventLog, add_usage, safe_api_error, save_json, timestamp, visible_output
 
 
-PROFILE = "astra-xhigh"
+# Compatibility for imports; the selected session profile is never hardcoded.
+PROFILE = DEFAULT_PROFILE
 PLATFORMS = ("car", "drone", "quadruped")
 ROOT = Path(__file__).resolve().parents[1]
 SYSTEM_PROMPT = Path(__file__).with_name("prompts") / "platform_system.md"
 CONTRACT = ROOT / "contracts" / "PLATFORM_MODEL.md"
 MAX_ARGUMENT_BYTES = 100_000
+MAX_OUTPUT_TOKENS = 16384
 
 
 def _hash(text: str) -> str:
@@ -121,14 +124,15 @@ def _report(run_dir, metadata, result):
 
 
 def run_platform_session(client, broker, run_dir: Path, *, platform,
-                         max_api_requests=16, max_seconds=1800, log=None):
+                         max_api_requests=16, max_seconds=1800, log=None,
+                         profile=DEFAULT_PROFILE, comparison_id=None):
     """Run a fresh context with only the broker's public tools; no API fallback.
 
     A supplied client and broker make the full loop testable without credentials,
     network access or physical simulation. Final verification stays host-side.
     """
     _validate_options(platform, max_api_requests, max_seconds)
-    selected = get_profile(PROFILE)
+    selected = get_profile(profile)
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     if (run_dir / "metadata.json").exists():
@@ -141,6 +145,8 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
                 "start_at": timestamp(), "end_at": None, "api_requests": 0,
                 "max_api_requests": max_api_requests, "max_seconds": max_seconds,
                 "agent_submitted": False, "stop_reason": None,
+                "comparison_id": comparison_id, "pid": os.getpid(), "model_effort_confirmed": False,
+                "host_reminders": 0,
                 "usage": {key: 0 for key in ("input_tokens", "output_tokens", "total_tokens",
                                              "reasoning_tokens", "cached_input_tokens")}}
     save_json(run_dir / "metadata.json", metadata)
@@ -174,22 +180,26 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
         caps = broker.budget_status()
         paths = {"investigation/api.py", "investigation/runner.py", "investigation/platform_run.py",
                  "investigation/platform_broker.py", "investigation/platform_physics.py",
+                 "investigation/platform_story.py",
                  "candidate/platform_model.py", "contracts/PLATFORM_MODEL.md",
                  "investigation/prompts/platform_system.md"}
         paths.update(str(path.relative_to(ROOT)) for path in (ROOT / "component_worker").glob("*.py"))
-        paths.update(f"simulator/platforms/{name}.py" for name in ("__init__", "car_damage", "drone", "quadruped"))
+        paths.update(f"simulator/platforms/{name}.py" for name in ("__init__", "car_damage", "drone", "quadruped", "quadruped_controller"))
         paths.update(str(path.relative_to(ROOT)) for path in (ROOT / "simulator/assets/platforms").rglob("*.xml"))
         capabilities = evidence.get("capabilities", {})
-        manifest = {"schema_version": 1, "platform": platform,
+        manifest = {"schema_version": 2, "platform": platform,
                     "source_sha256": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
                                       for name in sorted(paths)},
                     "runtime_versions": {"python": ".".join(str(part) for part in sys.version_info[:3]),
                                          **{name: version(name) for name in ("mujoco", "numpy", "openai", "Pillow")}},
                     "system_prompt_sha256": _hash(system), "contract_sha256": _hash(contract),
+                    "task_prompt_sha256": _hash(task),
+                    "initial_evidence_sha256": _hash(_json(evidence)),
                     "tool_schema_sha256": _hash(_json(schemas)),
                     "initial_source_sha256": hashlib.sha256(broker.current_source.read_bytes()).hexdigest(),
                     "max_api_requests": max_api_requests, "max_seconds": max_seconds,
-                    "max_output_tokens": 8192,
+                    "max_output_tokens": MAX_OUTPUT_TOKENS,
+                    "predeclared_criteria": getattr(broker, "predeclared_criteria", None),
                     "tool_caps": {key: value["limit"] for key, value in caps.items()
                                   if isinstance(value, dict) and "limit" in value},
                     "configuration_caps": {"model_parameters": capabilities.get("model_parameters", {}),
@@ -198,6 +208,7 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
                                                key: value for key, value in tool.get("parameters", {}).get("properties", {}).items()
                                                if key in {"config", "probe", "duration_s"}} for tool in schemas}}}
         metadata.update(system_prompt_sha256=_hash(system), task_prompt_sha256=_hash(task),
+                        initial_evidence_sha256=manifest["initial_evidence_sha256"],
                         tool_schema_sha256=manifest["tool_schema_sha256"],
                         contract_sha256=manifest["contract_sha256"],
                         protocol_fingerprint=_hash(_json(manifest)), protocol_manifest=manifest)
@@ -210,14 +221,23 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
             save_json(run_dir / "metadata.json", metadata)
             log("status", message=f"API request {metadata['api_requests']}/{max_api_requests}: "
                 f"{selected.model} / {selected.reasoning_effort}.")
-            response = request_response(client, conversation, schemas, profile=PROFILE)
+            response = request_response(client, conversation, schemas, profile=selected.name,
+                                        max_output_tokens=MAX_OUTPUT_TOKENS)
             add_usage(metadata["usage"], response)
             effort = response.reasoning.effort if response.reasoning else None
             log("api_response", response_id=response.id, model=response.model, reasoning_effort=effort,
                 status=response.status, usage=response.usage.model_dump() if response.usage else None)
             if response.model != selected.model or effort != selected.reasoning_effort:
+                metadata["model_effort_confirmed"] = False
                 raise RuntimeError("The API did not confirm the pinned model/reasoning pair")
-            visible_output(response, log)
+            metadata["model_effort_confirmed"] = True
+            def visible_event(kind, **values):
+                log(kind, **values)
+                if kind in {"assistant_message", "reasoning_summary"} and hasattr(broker, "record_explanation"):
+                    broker.record_explanation(values.get("text", ""))
+            visible_output(response, visible_event)
+            if hasattr(broker, "publish_story"):
+                broker.publish_story()
             if response.status != "completed":
                 metadata["stop_reason"] = "api_response_incomplete"
                 break
@@ -271,6 +291,7 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
                 conversation.append({"role": "user", "content": reminder})
                 log("host_message", text=reminder)
                 nudged = True
+                metadata["host_reminders"] += 1
         metadata["stop_reason"] = metadata["stop_reason"] or (
             "time_budget" if time.monotonic() - started >= max_seconds else "api_request_budget")
         metadata["status"] = "finalizing"
@@ -309,6 +330,9 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
             metadata["status"] = "evaluation_error"
     metadata.update(end_at=timestamp(), duration_s=time.monotonic() - started,
                     budgets=broker.budget_status())
+    if hasattr(broker, "action_summary"):
+        metadata["action_summary"] = broker.action_summary()
+        broker.publish_story()
     save_json(run_dir / "metadata.json", metadata)
     _report(run_dir, metadata, result)
     return metadata
@@ -316,18 +340,32 @@ def run_platform_session(client, broker, run_dir: Path, *, platform,
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--platform", required=True, choices=PLATFORMS)
+    parser.add_argument("--platform", choices=PLATFORMS)
     parser.add_argument("--scenario", help="host-only operator preset; never included in model prompts")
-    parser.add_argument("--output", required=True, type=Path, help="new session directory")
+    parser.add_argument("--profile", choices=PROFILES, default=DEFAULT_PROFILE)
+    parser.add_argument("--comparison-id", help="host audit identifier; never included in model prompts")
+    parser.add_argument("--output", type=Path, help="new session directory")
+    parser.add_argument("--list-scenarios", action="store_true",
+                        help="list supported host presets without an API key or running a simulation")
     parser.add_argument("--max-api-requests", type=int, default=16)
     parser.add_argument("--max-seconds", type=int, default=1800)
     parser.add_argument("--no-frames", action="store_true", help="skip host frame recording")
     args = parser.parse_args(argv)
+    if args.list_scenarios:
+        from .platform_physics import DEFAULTS, MODULES, SCENARIOS
+
+        for platform in ((args.platform,) if args.platform else PLATFORMS):
+            print(f"{platform} (default: {DEFAULTS[platform]})")
+            for scenario in SCENARIOS[platform]:
+                print(f"  {scenario}: {MODULES[platform].DESCRIPTIONS[scenario]}")
+        return 0
+    if args.platform is None or args.output is None:
+        parser.error("--platform and --output are required to start an investigation")
     try:
         _validate_options(args.platform, args.max_api_requests, args.max_seconds)
         if args.output.exists():
             raise ValueError("Output already exists; choose a new investigation directory")
-        settings = Settings.load(profile=PROFILE)
+        settings = Settings.load(profile=args.profile)
         from .platform_broker import PlatformBroker
         from .platform_physics import PlatformPhysics
 
@@ -337,6 +375,7 @@ def main(argv=None):
         # preset in the recorded adapter revision.
         save_json(args.output / "host_setup.json", {
             "platform": args.platform, "requested_scenario": args.scenario,
+            "profile": args.profile, "comparison_id": args.comparison_id,
             "record_frames": not args.no_frames,
             "max_api_requests": args.max_api_requests, "max_seconds": args.max_seconds})
         physics = PlatformPhysics(args.platform, args.output / "physics",
@@ -345,7 +384,8 @@ def main(argv=None):
         with settings.client() as client:
             metadata = run_platform_session(client, broker, args.output, platform=args.platform,
                                             max_api_requests=args.max_api_requests,
-                                            max_seconds=args.max_seconds)
+                                            max_seconds=args.max_seconds, profile=args.profile,
+                                            comparison_id=args.comparison_id)
         print(f"Process status: {metadata['status']}\nReport: {(args.output / 'report.md').resolve()}")
         return 0 if metadata["status"] == "completed" else 1
     except APIError as error:

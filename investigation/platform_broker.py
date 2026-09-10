@@ -17,6 +17,7 @@ import time
 import numpy as np
 
 from component_worker import WorkerError
+from .platform_story import Story, atomic_json, criteria
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,8 +38,7 @@ def _sha(data):
 
 
 def _save(path, value):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
+    atomic_json(path, value)
 
 
 def _schema(name, description, properties):
@@ -106,6 +106,7 @@ class PlatformBroker:
         self._edits = 0
         self._started = time.monotonic()
         self._records = {}
+        self._public_ids = {}
         self._initial = None
         self._last_check = None
         self.repair_history = []
@@ -115,12 +116,18 @@ class PlatformBroker:
         self._versions = {}
         self.current_source = self._version((ROOT / "candidate/platform_model.py").read_bytes())
         self.tool_schemas = self._tools()
+        self.verification_probes = tuple(dict.fromkeys(
+            (self.physics.default_probe, *VERIFICATION_PROBES[self.physics.platform])))[:2]
+        self.predeclared_criteria = criteria(self.physics.platform, self.verification_probes,
+                                            self.physics.default_duration_s)
+        self.story = Story(self.workdir.parent, self.physics.platform, self.predeclared_criteria)
         _save(self.workdir / "verification_plan.json", {
-            "probes": list(VERIFICATION_PROBES[self.physics.platform]),
+            "probes": list(self.verification_probes),
             "duration_s": self.physics.default_duration_s,
             "fresh_specimen": True, "predictions_locked_before_probes": True,
             "measurement": "position error over overlapping recorded times and the platform's public probe envelope",
-            "scope": "Repeated controlled synthetic probes, not necessarily unseen maneuvers or general safety."})
+            "scope": "Repeated controlled synthetic probes, not necessarily unseen maneuvers or general safety.",
+            "criteria": self.predeclared_criteria})
 
     def _tools(self):
         probe = {"type": "string", "enum": list(self._probes)}
@@ -169,6 +176,12 @@ class PlatformBroker:
         public = _public(record)
         if not isinstance(public.get("id"), str):
             raise PlatformToolError("The experiment did not produce a recording id.")
+        # Independent processes receive byte-identical initial prompts. Storage
+        # ids and paths remain private, while public ids follow tool-call order.
+        original_id = public["id"]
+        if original_id not in self._public_ids:
+            self._public_ids[original_id] = f"run_{len(self._public_ids) + 1:04d}"
+        public["id"] = self._public_ids[original_id]
         self._records[public["id"]] = public
         _save(self.workdir / "records" / (public["id"] + ".json"), public)
         return public
@@ -181,6 +194,14 @@ class PlatformBroker:
                              "initial_difference": compare_records(healthy, observed),
                              "interpretation": "A physical incident or condition may have changed behavior. Infer causes from public measurements; maintenance and model editing are distinct actions."}
             _save(self.workdir / "initial_evidence.json", self._initial)
+            difference = self._initial["initial_difference"]
+            self.story.initial_mismatch = (observed.get("summary", {}).get("safe") is False or
+                                           (difference.get("position_rmse_m") or 0) > 1e-6)
+            self.story.replay(self.physics, initial["observed"], "before", "Original diagnostic maneuver")
+            self.story.replay(self.physics, initial["healthy"], "healthy", "Healthy control")
+            if hasattr(self.physics, "record_incident"):
+                self.story.replay(self.physics, self.physics.record_incident(), "incident", "Original incident")
+            self.story.publish()
         return self._initial
 
     def _text(self, value, maximum=4000):
@@ -255,18 +276,47 @@ class PlatformBroker:
                 return self._parameters(worker.parameters())
             record = physics.run_model(probe, duration_s, parameters)
             record["source_sha256"] = worker.source_sha256
+            if hasattr(physics, "workdir"):
+                record_path = Path(physics.workdir) / record["id"] / "record.json"
+                if record_path.is_file():
+                    _save(record_path, record)
             return record
 
     def _check(self, probe, duration_s):
-        actual = self._remember(self.physics.run_experiment(probe, duration_s))
-        healthy = self._remember(self.physics.reference_probe(probe, duration_s))
+        actual_record = self.physics.run_experiment(probe, duration_s)
+        healthy_record = self.physics.reference_probe(probe, duration_s)
+        self.story.replay(self.physics, actual_record, "diagnostic", "Repair check")
+        actual = self._remember(actual_record)
+        healthy = self._remember(healthy_record)
         result = {"observed": actual, "healthy": healthy, "difference": compare_records(healthy, actual),
                   "maintenance_actions": len(self.repair_history),
                   "interpretation": "These measurements describe this probe only. A maintenance receipt alone does not demonstrate recovery."}
         self._last_check = result
         return result
 
+    def record_explanation(self, text):
+        self.story.explanation(text)
+
+    def publish_story(self):
+        self.story.publish()
+
+    def action_summary(self):
+        return self.story.action_summary()
+
     def dispatch(self, name, arguments):
+        entry = self.story.begin(name, arguments)
+        source_before = self.current_source.read_text() if name in {"replace_model_source", "restore_model_version"} else None
+        result = self._dispatch(name, arguments)
+        change = getattr(self.physics, "_last_maintenance_change", {}) if name == "apply_repair" and result.get("ok") else {}
+        difference = None
+        if source_before is not None and result.get("ok"):
+            difference = "".join(difflib.unified_diff(source_before.splitlines(True),
+                                self.current_source.read_text().splitlines(True),
+                                fromfile="before/model.py", tofile="after/model.py"))
+        self.story.finish(entry, result, before=change.get("before"), after=change.get("after"), source_diff=difference)
+        return result
+
+    def _dispatch(self, name, arguments):
         try:
             if self._frozen:
                 raise PlatformToolError("The result is frozen; development tools are closed.")
@@ -309,14 +359,18 @@ class PlatformBroker:
                     source = self._versions[version].read_text()
                 result = self._replace(source, arguments["expected_sha256"], arguments["rationale"])
             elif name == "run_experiment":
-                result = self._remember(self.physics.run_experiment(arguments["probe"], arguments["duration_s"]))
+                record = self.physics.run_experiment(arguments["probe"], arguments["duration_s"])
+                self.story.replay(self.physics, record, "diagnostic", "Diagnostic experiment")
+                result = self._remember(record)
             elif name == "observe_run":
                 identifier = arguments["id"]
                 if not isinstance(identifier, str) or identifier not in self._records:
                     raise PlatformToolError("That recording does not belong to this investigation.")
                 result = self._records[identifier]
             elif name == "run_model":
-                result = self._remember(self._model(self.physics, arguments["probe"], arguments["duration_s"]))
+                record = self._model(self.physics, arguments["probe"], arguments["duration_s"])
+                self.story.replay(self.physics, record, "prediction", "Development prediction")
+                result = self._remember(record)
             elif name == "apply_repair":
                 self._text(arguments["action"], 80)
                 self._text(arguments["target"], 80)
@@ -356,7 +410,7 @@ class PlatformBroker:
         self.current_source = frozen
         _save(frozen.parent / "submission.json", {"reason": reason, "agent_submitted": self.submitted,
               "source_sha256": _sha(frozen.read_bytes()), "maintenance": self.repair_history,
-              "diagnosis": diagnosis, "verification_probes": list(VERIFICATION_PROBES[self.physics.platform])})
+              "diagnosis": diagnosis, "verification_probes": list(self.verification_probes)})
 
     def finalize(self, reason):
         """Freeze once; assess the same action sequence on a fresh host specimen."""
@@ -369,31 +423,64 @@ class PlatformBroker:
                                    scenario=self.physics.scenario,
                                    record_frames=getattr(self.physics, "record_frames", True))
         cases = []
-        probes = list(VERIFICATION_PROBES[self.physics.platform])
+        probes = list(self.verification_probes)
         duration = self.physics.default_duration_s
         predictions = []
         for probe in probes:
             try:
-                predictions.append(_public(self._model(reserved, probe, duration)))
+                record = self._model(reserved, probe, duration)
+                predictions.append(_public(record))
+                self.story.replay(reserved, record, "prediction", "Frozen prediction")
             except (WorkerError, ValueError, RuntimeError, OSError):
                 predictions.append({"probe": probe, "error": "The frozen model could not produce this prediction."})
         _save(self.workdir / "submission" / "predictions_locked.json", predictions)
         before = [reserved.run_experiment(probe, duration) for probe in probes]
+        for record in before:
+            self.story.replay(reserved, record, "before", "Original verification maneuver")
         for action in self.repair_history:
             reserved.apply_repair(action["action"], action["target"])
         for index, probe in enumerate(probes):
             healthy = reserved.reference_probe(probe, duration)
             after = reserved.run_experiment(probe, duration)
+            self.story.replay(reserved, after, "after", "After recorded interventions")
+            self.story.replay(reserved, healthy, "healthy", "Healthy verification control")
             case = {"probe": probe, "duration_s": duration, "before": _public(before[index]),
                     "after": _public(after), "healthy": _public(healthy), "prediction": predictions[index],
                     "before_difference": compare_records(healthy, before[index]),
                     "after_difference": compare_records(healthy, after),
                     "prediction_difference": compare_records(predictions[index], after)}
             cases.append(case)
+        def complete(record):
+            observations = record.get("observations", [])
+            return bool(observations and observations[-1].get("t_s", 0) >= duration - .005)
+
+        def mean(key):
+            values = [case[key].get("position_rmse_m") for case in cases]
+            return sum(values) / len(values) if values and all(isinstance(v, (int, float)) and math.isfinite(v) for v in values) else None
+
+        physical_success = bool(cases) and all(complete(case["after"]) and case["after"]["summary"].get("safe") is True for case in cases)
+        predictive_success = bool(cases) and all(
+            complete(case["prediction"]) and complete(case["after"]) and
+            case["prediction_difference"].get("common_duration_s", 0) >= duration - .005 and
+            isinstance(case["prediction_difference"].get("position_rmse_m"), (int, float)) and
+            case["prediction_difference"]["position_rmse_m"] <= self.predeclared_criteria["prediction_rmse_max_m"]
+            for case in cases)
+        self.story.verification = {"status": "completed", "goal_achieved": physical_success,
+            "predictive_success": predictive_success,
+            "cases": [{"probe": case["probe"], "goal_achieved": complete(case["after"]) and case["after"]["summary"].get("safe") is True,
+                       "before_difference": case["before_difference"], "after_difference": case["after_difference"],
+                       "prediction_difference": case["prediction_difference"]} for case in cases]}
         self._result = {"kind": "platform_repair_verification", "platform": self.physics.platform,
                         "source_sha256": _sha(self.current_source.read_bytes()), "agent_submitted": self.submitted,
                         "maintenance": self.repair_history, "initial_difference": initial["initial_difference"],
                         "cases": cases,
+                        "goal": self.story.goal, "predeclared_criteria": self.predeclared_criteria,
+                        "aggregate": {"goal_achieved": physical_success, "predictive_success": predictive_success,
+                                      "mean_before_rmse_m": mean("before_difference"),
+                                      "mean_after_rmse_m": mean("after_difference"),
+                                      "mean_prediction_rmse_m": mean("prediction_difference")},
+                        "action_summary": self.action_summary(),
                         "interpretation": "The model and maintenance sequence were frozen, then checked on a fresh synthetic specimen. Before/after differences and probe envelopes are evidence, not general physical validity or safety claims. Physical maintenance is distinct from Python source extension."}
         _save(self.workdir / "verification_result.json", self._result)
+        self.story.publish()
         return self._result

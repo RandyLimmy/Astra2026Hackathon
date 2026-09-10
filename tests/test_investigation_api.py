@@ -60,7 +60,7 @@ class Broker:
         return {"tool_calls": {"used": len(self.calls), "limit": 30}}
 
 
-def response(output, *, status="completed", model=MODEL, reasoning_effort="xhigh"):
+def response(output, *, status="completed", model=MODEL, reasoning_effort="max"):
     return SimpleNamespace(id="response_test", model=model, reasoning=SimpleNamespace(effort=reasoning_effort),
                            status=status, output=output, usage=None)
 
@@ -69,12 +69,12 @@ def call(name, arguments):
     return Item(type="function_call", name=name, arguments=json.dumps(arguments), call_id="call_" + name)
 
 
-def test_every_request_pins_astra_xhigh_and_preserves_stateless_reasoning():
+def test_every_request_pins_astra_max_and_preserves_stateless_reasoning():
     client = Client([None])
     request_response(client, [{"role": "user", "content": "test"}], [])
     actual = client.requests[0]
     assert actual["model"] == "gpt-6-astra"
-    assert actual["reasoning"] == {"effort": "xhigh", "summary": "auto"}
+    assert actual["reasoning"] == {"effort": "max", "summary": "auto"}
     assert actual["store"] is False
     assert actual["include"] == ["reasoning.encrypted_content"]
     assert actual["parallel_tool_calls"] is False
@@ -85,12 +85,12 @@ def test_config_uses_one_key_without_exposing_it_in_repr(tmp_path, monkeypatch):
     for name in ("OPENAI_API_KEY", "ASTRA_MODEL", "ASTRA_REASONING_EFFORT"):
         monkeypatch.delenv(name, raising=False)
     path = tmp_path / ".env"
-    path.write_text("OPENAI_API_KEY=synthetic-secret-only\nASTRA_MODEL=gpt-6-astra\nASTRA_REASONING_EFFORT=xhigh\n")
+    path.write_text("OPENAI_API_KEY=synthetic-secret-only\nASTRA_MODEL=gpt-6-astra\nASTRA_REASONING_EFFORT=max\n")
     settings = Settings.load(path)
     assert settings.api_key == "synthetic-secret-only"
     assert "synthetic-secret-only" not in repr(settings)
     path.write_text("OPENAI_API_KEY=synthetic-secret-only\nASTRA_REASONING_EFFORT=low\n")
-    with pytest.raises(ValueError, match="xhigh"):
+    with pytest.raises(ValueError, match="max"):
         Settings.load(path)
 
 
@@ -252,7 +252,7 @@ def test_debrief_only_receives_frozen_public_feedback_with_tools_disabled(tmp_pa
     assert final["max_output_tokens"] == 2048
     for request in client.requests:
         assert request["model"] == "gpt-6-astra"
-        assert request["reasoning"] == {"effort": "xhigh", "summary": "auto"}
+        assert request["reasoning"] == {"effort": "max", "summary": "auto"}
         assert request["store"] is False
         assert request["parallel_tool_calls"] is False
     content = final["input"][-1]["content"]

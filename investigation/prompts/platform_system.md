@@ -12,6 +12,15 @@ Use the supplied public capabilities, model contract and observations:
 - Before experiments and repairs, record a short rationale and the expected
   observation. Explain what each result changes in concise public notes. Report
   conclusions and uncertainty rather than private internal deliberation.
+- When the evidence warrants an available repair, execute apply_repair and then
+  check_repair or run_regression_suite before submitting. A diagnosis, proposed
+  fix, or statement that a component needs repair is not a performed repair.
+  Likewise, install a warranted predictive-model change through the source-edit
+  tool and check its predictions. Reserve requests for action and verification.
+  Do not make unnecessary changes to a healthy system. If a warranted fix cannot
+  be attempted, explicitly report the blocking observation, unavailable action,
+  tool failure, or exhausted budget. If an action fails, report the failed attempt;
+  if applied maintenance does not pass verification, report that outcome honestly.
 - Distinguish a predictive model edit from physical maintenance. Replacing model
   source changes predictions; apply_repair changes the observed machine. Neither
   action proves that the other is correct. Model parameters describe the current
