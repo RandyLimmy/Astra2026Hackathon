@@ -212,6 +212,18 @@ def model_xml(config: Config) -> str:
         chassis = root.find(".//body[@name='chassis']")
         world = root.find("worldbody")
         assert cargo_body is not None and slide is not None and chassis is not None and world is not None
+        # Carry one parcel rather than the legacy massless upper box fused to
+        # the lower box. Keep the parcel's declared mass and inertia together.
+        for parcel_geom in list(cargo_body.findall("geom")):
+            if float(parcel_geom.get("pos", "0 0 0").split()[2]) > .14:
+                cargo_body.remove(parcel_geom)
+        deck = root.find(".//geom[@name='cargo_deck']")
+        assert deck is not None
+        # The old deck was below the tops of the driven tires: an outward
+        # sliding parcel hit a tire and was thrown back onto the cart. Provide
+        # physical clearance and start the box resting exactly on the deck.
+        deck.set("pos", "0 0 .20")
+        cargo_body.set("pos", "0 0 .35")
         slide.set("axis", "0 1 0")
         slide.set("limited", "false")
         slide.set("damping", "0")
@@ -220,18 +232,18 @@ def model_xml(config: Config) -> str:
                            {"name": "cargo_rotation", "type": "ball"}):
             ET.SubElement(cargo_body, "joint", {**attributes, "damping": "0", "armature": "0",
                                                 "limited": "false"})
-        for name in ("cargo_box", "cargo_top", "cargo_deck"):
+        for name in ("cargo_box", "cargo_deck"):
             geom = root.find(f".//geom[@name='{name}']")
             assert geom is not None
             geom.set("contype", "1")
             geom.set("conaffinity", "1")
             geom.set("friction", ".06 .002 .0001")
         contact = ET.SubElement(root, "contact")
-        for first in ("cargo_box", "cargo_top"):
+        for first in ("cargo_box",):
             for second in ("cargo_deck", "chassis_geom"):
                 # Explicit pairs are necessary for collisions between the
                 # cargo body and its direct parent. The floor uses ordinary
-                # collision detection, including the solid upper box.
+                # collision detection.
                 ET.SubElement(contact, "pair", geom1=first, geom2=second,
                               friction=".06 .06 .002 .0001 .0001", solref=".006 1",
                               solimp=".95 .99 .001")
@@ -247,17 +259,8 @@ def model_xml(config: Config) -> str:
         for geom in list(world.findall("geom")):
             if geom.get("class") == "visual" and geom.get("pos", "").endswith(("0.003", "0.004")):
                 world.remove(geom)
-        for offset, color in ((-.7, ".96 .72 .23 1"), (.7, ".96 .72 .23 1"), (0., ".72 .84 .89 1")):
-            for index in range(0, len(_ROUTE_POINTS) - 4, 4):
-                if offset == 0. and index % 12:
-                    continue
-                start, end = _ROUTE_POINTS[index], _ROUTE_POINTS[index + 4]
-                tangent = end - start
-                normal = np.array([-tangent[1], tangent[0]]) / np.linalg.norm(tangent)
-                a, b = start + normal * offset, end + normal * offset
-                ET.SubElement(world, "geom", {"class": "visual", "type": "capsule",
-                              "fromto": f"{a[0]} {a[1]} .006 {b[0]} {b[1]} .006", "size": ".012",
-                              "rgba": color})
+        from .warehouse_tracks import add_tracks
+        add_tracks(world, chassis, _ROUTE_POINTS, TRACK_WIDTH)
         for name in ("overview", "chase", "side"):
             camera = root.find(f".//camera[@name='{name}']")
             assert camera is not None
@@ -265,8 +268,20 @@ def model_xml(config: Config) -> str:
                 camera.set("fovy", "42")
                 continue
             camera.set("mode", "fixed")
-            camera.set("pos", "2.1 -5.8 6.4" if name == "overview" else "6 -1.5 4.5")
-            camera.set("xyaxes", "1 0 0 0 .81 .59" if name == "overview" else "0 1 0 -.73 0 .68")
+            if name == "overview":
+                camera.set("pos", "2.1 -5.8 6.4")
+                camera.set("xyaxes", "1 0 0 0 .81 .59")
+            else:
+                # Outside the bend: the falling parcel stays in front of the
+                # trolley instead of disappearing behind the raised deck.
+                eye = np.array([7.5, 2.5, 3.3])
+                z = eye - np.array([3.5, -.9, .3])
+                z /= np.linalg.norm(z)
+                right = np.cross([0., 0., 1.], z)
+                right /= np.linalg.norm(right)
+                up = np.cross(z, right)
+                camera.set("pos", " ".join(map(str, eye)))
+                camera.set("xyaxes", " ".join(map(str, np.r_[right, up])))
             camera.set("fovy", "60")
             chassis.remove(camera)
             world.append(camera)
@@ -349,7 +364,9 @@ class Simulation:
         self._swivel_qpos = int(self.model.joint("caster_swivel").qposadr[0])
         self._latch = self.model.equality("cargo_latch").id
         self._cargo_body = self.model.body("cargo").id
-        self._cargo_geoms = {self.model.geom("cargo_box").id, self.model.geom("cargo_top").id}
+        self._cargo_geoms = {self.model.geom(name).id for name in
+                             (("cargo_box",) if config.probe in CURVE_PROBES else
+                              ("cargo_box", "cargo_top"))}
         self._floor = self.model.geom("floor").id
         self._deck = self.model.geom("cargo_deck").id
         self._nominal_friction = self.model.geom_friction.copy()
@@ -512,6 +529,9 @@ class Simulation:
         return observation
 
     def diagnostics(self) -> dict[str, Any]:
+        cargo_velocity = np.zeros(6)
+        mujoco.mj_objectVelocity(self.model, self.data, mujoco.mjtObj.mjOBJ_BODY,
+                                self._cargo_body, cargo_velocity, 0)
         wheel_loads = np.zeros(2)
         for index in range(self.data.ncon):
             contact = self.data.contact[index]
@@ -529,6 +549,9 @@ class Simulation:
                 "max_cargo_displacement": self._max_cargo_displacement,
                 "cargo_latched": bool(self.data.eq_active[self._latch]),
                 "cargo_position": self.data.xpos[self._cargo_body].tolist(),
+                "cargo_linear_velocity": cargo_velocity[3:].tolist(),
+                "cargo_angular_velocity": cargo_velocity[:3].tolist(),
+                "cargo_tilt_rad": math.acos(float(np.clip(self.data.xmat[self._cargo_body, 8], -1., 1.))),
                 "cargo_ground_contact": self._cargo_floor_contact,
                 "cargo_dropped": self._cargo_dropped,
                 "cargo_on_deck": self._cargo_on_deck,

@@ -62,6 +62,8 @@ def test_cargo_mismatch_is_visible_even_when_vehicle_paths_match():
     assert result["position_rmse_m"] == 0
     assert result["cargo_position_rmse_m"] > 1
     assert result["cargo_dropped"] is True
+    assert cargo_demo.stage(b["samples"][0], 0, .2, curve=True)[0] == "03 / PARCEL SETTLED"
+    b["samples"][0]["cargo_linear_velocity"] = [1., 0., 0.]
     assert cargo_demo.stage(b["samples"][0], 0, .2, curve=True)[0] == "03 / CARGO LOST"
 
 
@@ -74,6 +76,9 @@ def test_curve_replay_captures_physical_spill_and_predeclared_route(tmp_path):
     assert report["baseline"]["cargo_position_rmse_m"] > .3
     assert report["baseline"]["first_recorded_ground_contact_s"] is not None
     assert report["baseline"]["control_comparison"] == "same route feedback controller"
+    measured = json.loads((output / "measured-operator-trace.json").read_text())
+    last = measured["samples"][-1]
+    assert cargo_demo.stage(last, 0, last["observation"]["time"], curve=True)[0] == "04 / DELIVERY FAILED"
 
 
 def test_predictions_are_locked_before_measured_rollout(tmp_path):
