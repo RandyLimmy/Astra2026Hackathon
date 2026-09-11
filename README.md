@@ -1,5 +1,9 @@
 # RealityPatch
 
+We lost lol. Maybe we were too research-oriented.
+
+Anyways, here is our project. 
+
 The current testing scope is **these four complete control tasks**:
 
 | Machine | Scenario ID | Required successful outcome |
